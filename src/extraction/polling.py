@@ -3,16 +3,14 @@ Módulo de polling para verificação de disponibilidade de dados.
 
 Implementa sistema de tentativas para aguardar disponibilidade dos dados do FastF1.
 """
+
 import fastf1
 import time
 from typing import Optional
 
 
 def ingest_race_data(
-    year: int,
-    round_number: int,
-    max_retries: int = 10,
-    retry_interval: int = 300
+    year: int, round_number: int, max_retries: int = 10, retry_interval: int = 300
 ) -> Optional[fastf1.core.Session]:
     """
     Script de polling que aguarda a disponibilidade dos dados da corrida.
@@ -29,13 +27,13 @@ def ingest_race_data(
     Returns:
         Objeto Session carregado com todos os dados, ou None se falhar
     """
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print(f"Iniciando ingestão de dados: {year} - Round {round_number}")
-    print(f"{'='*60}\n")
+    print(f"{'=' * 60}\n")
 
     # Passo 1: Instanciar a Sessão
     try:
-        session = fastf1.get_session(year, round_number, 'Race')
+        session = fastf1.get_session(year, round_number, "Race")
         print(f"Sessão instanciada: {session.event['EventName']}")
         print(f"Local: {session.event['Location']}, {session.event['Country']}")
     except Exception as e:
@@ -52,12 +50,7 @@ def ingest_race_data(
             print("Carregando: Laps, Telemetry, Weather, Messages...")
 
             # Tenta carregar dados completos
-            session.load(
-                laps=True,
-                telemetry=True,
-                weather=True,
-                messages=True
-            )
+            session.load(laps=True, telemetry=True, weather=True, messages=True)
 
             data_loaded = True
             print("\n✓ Dados carregados com sucesso!")
@@ -95,7 +88,7 @@ def quick_load_session(year: int, round_number: int) -> fastf1.core.Session:
         Objeto Session carregado
     """
     print(f"Carregamento rápido: {year} - Round {round_number}")
-    session = fastf1.get_session(year, round_number, 'Race')
+    session = fastf1.get_session(year, round_number, "Race")
     session.load(laps=True, telemetry=True, weather=True, messages=True)
     print(f"✓ Sessão carregada: {session.event['EventName']}")
     return session

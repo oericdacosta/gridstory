@@ -4,6 +4,7 @@ Orquestrador principal para extração de dados de F1.
 Coordena o processo completo de extração de dados, incluindo polling,
 ETL e salvamento em arquivos Parquet.
 """
+
 from src.extraction.calendar import get_season_schedule, get_next_race, save_schedule
 from src.extraction.polling import ingest_race_data, quick_load_session
 from src.extraction.etl import RaceDataETL
@@ -14,7 +15,7 @@ def extract_race_complete(
     round_number: int,
     use_polling: bool = False,
     save_telemetry: bool = False,
-    output_dir: str = "data/raw/races"
+    output_dir: str = "data/raw/races",
 ):
     """
     Pipeline completo de extração de dados de uma corrida.
@@ -30,9 +31,9 @@ def extract_race_complete(
     Returns:
         Caminho do diretório com os dados salvos
     """
-    print(f"\n{'='*70}")
+    print(f"\n{'=' * 70}")
     print(f"PIPELINE DE EXTRAÇÃO: {year} - Round {round_number}")
-    print(f"{'='*70}\n")
+    print(f"{'=' * 70}\n")
 
     # Passo 1: Carregar sessão (com ou sem polling)
     if use_polling:
@@ -52,10 +53,10 @@ def extract_race_complete(
     # Passo 3: Salvar dados
     race_dir = etl.save_to_parquet(data, output_dir=output_dir)
 
-    print(f"\n{'='*70}")
+    print(f"\n{'=' * 70}")
     print(f"✓ PIPELINE CONCLUÍDO COM SUCESSO")
     print(f"  Dados salvos em: {race_dir}")
-    print(f"{'='*70}\n")
+    print(f"{'=' * 70}\n")
 
     return race_dir
 
@@ -71,9 +72,9 @@ def extract_season_calendar(year: int, output_dir: str = "data/raw/calendar"):
     Returns:
         Caminho do arquivo de calendário
     """
-    print(f"\n{'='*70}")
+    print(f"\n{'=' * 70}")
     print(f"EXTRAÇÃO DE CALENDÁRIO: Temporada {year}")
-    print(f"{'='*70}\n")
+    print(f"{'=' * 70}\n")
 
     schedule = get_season_schedule(year, include_testing=False)
     file_path = save_schedule(schedule, output_dir=output_dir)
@@ -100,7 +101,7 @@ def extract_multiple_races(
     year: int,
     round_numbers: list,
     save_telemetry: bool = False,
-    output_dir: str = "data/raw/races"
+    output_dir: str = "data/raw/races",
 ):
     """
     Extrai dados de múltiplas corridas em sequência.
@@ -114,9 +115,9 @@ def extract_multiple_races(
     Returns:
         Lista de caminhos dos diretórios criados
     """
-    print(f"\n{'='*70}")
+    print(f"\n{'=' * 70}")
     print(f"EXTRAÇÃO EM LOTE: {len(round_numbers)} corridas da temporada {year}")
-    print(f"{'='*70}\n")
+    print(f"{'=' * 70}\n")
 
     results = []
 
@@ -127,22 +128,22 @@ def extract_multiple_races(
                 round_number=round_num,
                 use_polling=False,
                 save_telemetry=save_telemetry,
-                output_dir=output_dir
+                output_dir=output_dir,
             )
-            results.append({'round': round_num, 'status': 'success', 'path': race_dir})
+            results.append({"round": round_num, "status": "success", "path": race_dir})
             print(f"\n✓ Round {round_num} concluído\n")
 
         except Exception as e:
             print(f"\n✗ Erro no Round {round_num}: {e}\n")
-            results.append({'round': round_num, 'status': 'error', 'error': str(e)})
+            results.append({"round": round_num, "status": "error", "error": str(e)})
 
     # Resumo final
-    print(f"\n{'='*70}")
+    print(f"\n{'=' * 70}")
     print("RESUMO DA EXTRAÇÃO EM LOTE")
-    print(f"{'='*70}")
+    print(f"{'=' * 70}")
 
-    success_count = sum(1 for r in results if r['status'] == 'success')
-    error_count = sum(1 for r in results if r['status'] == 'error')
+    success_count = sum(1 for r in results if r["status"] == "success")
+    error_count = sum(1 for r in results if r["status"] == "error")
 
     print(f"  ✓ Sucessos: {success_count}/{len(round_numbers)}")
     print(f"  ✗ Erros: {error_count}/{len(round_numbers)}")
@@ -150,9 +151,9 @@ def extract_multiple_races(
     if error_count > 0:
         print(f"\nRounds com erro:")
         for r in results:
-            if r['status'] == 'error':
+            if r["status"] == "error":
                 print(f"  - Round {r['round']}: {r['error']}")
 
-    print(f"\n{'='*70}\n")
+    print(f"\n{'=' * 70}\n")
 
     return results

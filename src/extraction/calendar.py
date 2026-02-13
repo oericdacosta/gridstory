@@ -3,6 +3,7 @@ Módulo para mapeamento do calendário de F1.
 
 Fornece funções para carregar, processar e salvar calendários de temporadas.
 """
+
 import fastf1
 import pandas as pd
 from pathlib import Path
@@ -36,8 +37,8 @@ def get_next_race(schedule: pd.DataFrame) -> dict:
     Returns:
         Dicionário com informações da próxima corrida
     """
-    now = pd.Timestamp.now(tz='UTC')
-    upcoming_races = schedule[schedule['Session5DateUtc'] > now]
+    now = pd.Timestamp.now(tz="UTC")
+    upcoming_races = schedule[schedule["Session5DateUtc"] > now]
 
     if len(upcoming_races) == 0:
         print("Nenhuma corrida futura encontrada.")
@@ -45,12 +46,12 @@ def get_next_race(schedule: pd.DataFrame) -> dict:
 
     next_race = upcoming_races.iloc[0]
     return {
-        'round_number': next_race['RoundNumber'],
-        'event_name': next_race['EventName'],
-        'country': next_race['Country'],
-        'location': next_race['Location'],
-        'race_date': next_race['Session5DateUtc'],
-        'event_date': next_race['EventDate']
+        "round_number": next_race["RoundNumber"],
+        "event_name": next_race["EventName"],
+        "country": next_race["Country"],
+        "location": next_race["Location"],
+        "race_date": next_race["Session5DateUtc"],
+        "event_date": next_race["EventDate"],
     }
 
 
