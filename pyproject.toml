@@ -1,0 +1,13 @@
+[project]
+name = "pitwall-ai"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "fastf1>=3.8.1",
+    "numpy>=2.4.2",
+    "pandas>=2.3.3",
+    "pyarrow>=23.0.0",
+    "pyyaml>=6.0.3",
+]

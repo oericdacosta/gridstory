@@ -1,0 +1,104 @@
+# Configuração do PitWall AI
+
+# Diretórios de dados
+data:
+  raw:
+    base_dir: "data/raw"
+    races_dir: "data/raw/races"
+    calendar_dir: "data/raw/calendar"
+  processed:
+    base_dir: "data/processed"
+  timelines:
+    base_dir: "data/timelines"
+  models:
+    base_dir: "data/models"
+
+# Cache do FastF1
+cache:
+  enabled: true
+  dir: "~/.cache/fastf1"  # ~ será expandido para home do usuário
+
+# Extração de dados
+extraction:
+  # Timeout padrão para download de dados (em segundos)
+  timeout: 300
+
+  # Polling para corridas recentes
+  polling:
+    max_retries: 10
+    retry_interval: 300  # 5 minutos em segundos
+
+  # Telemetria
+  telemetry:
+    # Colunas críticas a extrair
+    columns:
+      - Time
+      - Speed
+      - RPM
+      - Throttle
+      - Brake
+      - nGear
+      - DRS
+      - Distance
+
+# Dados de voltas
+laps:
+  # Colunas críticas a extrair
+  critical_columns:
+    - Driver
+    - DriverNumber
+    - LapNumber
+    - Compound
+    - TyreLife
+    - FreshTyre
+    - IsAccurate
+    - Stint
+    - Team
+    - TrackStatus
+    - Position
+
+# Clima
+weather:
+  # Colunas a extrair
+  columns:
+    - Time
+    - AirTemp
+    - TrackTemp
+    - Rainfall
+    - WindSpeed
+    - Humidity
+    - Pressure
+
+# Logging
+logging:
+  level: "INFO"
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+
+# ML Pipeline (futuro)
+ml:
+  # Ruptures - Detecção de degradação
+  degradation:
+    algorithm: "Pelt"
+    penalty: 3
+
+  # Isolation Forest - Anomalias
+  anomaly:
+    contamination: 0.1
+    n_estimators: 100
+
+  # Clustering
+  clustering:
+    algorithm: "KMeans"
+    n_clusters: 3
+
+# API (futuro)
+api:
+  host: "0.0.0.0"
+  port: 8000
+  reload: false
+
+# LLM (futuro)
+llm:
+  model: "gpt-4"
+  temperature: 0.7
+  max_tokens: 2000
