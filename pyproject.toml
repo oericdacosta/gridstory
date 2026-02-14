@@ -10,4 +10,10 @@ dependencies = [
     "pandas>=2.3.3",
     "pyarrow>=23.0.0",
     "pyyaml>=6.0.3",
+    "scipy>=1.17.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.2",
 ]
