@@ -7,6 +7,8 @@ pitwall-ai/
 │
 ├── cli/                        # Ferramentas de linha de comando
 │   ├── extract.py             # [IMPLEMENTADO] CLI de extração de dados
+│   ├── preprocess.py          # [IMPLEMENTADO] CLI de pré-processamento
+│   ├── list_data.py           # [IMPLEMENTADO] Listagem de dados
 │   ├── train_ml.py            # [PLANEJADO] Treinamento de ML
 │   ├── generate_report.py     # [PLANEJADO] Geração de relatórios
 │   └── serve.py               # [PLANEJADO] Servidor API
@@ -17,6 +19,11 @@ pitwall-ai/
 │   │   ├── polling.py         # Polling de disponibilidade
 │   │   ├── etl.py             # Extract, Transform, Load
 │   │   └── orchestrator.py    # Orquestração de extração
+│   │
+│   ├── preprocessing/         # [IMPLEMENTADO] Pré-processamento SciPy
+│   │   ├── interpolation.py   # Sincronização de telemetria
+│   │   ├── signal_processing.py # Processamento de sinal
+│   │   └── feature_engineering.py # Features estatísticas
 │   │
 │   ├── ml/                    # [PLANEJADO] Pipeline ML
 │   │   ├── degradation.py     # Degradação de pneus (Ruptures)
@@ -52,6 +59,7 @@ pitwall-ai/
 │
 ├── tests/                      # Suite de testes
 │   ├── test_extraction/       # [IMPLEMENTADO] Testes de extração
+│   ├── preprocessing/         # [IMPLEMENTADO] Testes de pré-processamento (23 testes)
 │   ├── test_ml/               # [PLANEJADO] Testes de ML
 │   ├── test_api/              # [PLANEJADO] Testes de API
 │   └── test_llm/              # [PLANEJADO] Testes de LLM
@@ -79,7 +87,8 @@ pitwall-ai/
 ├── config.yaml                 # Configuração centralizada
 ├── main.py                     # Entry point principal (futuro: servidor API)
 ├── README.md                   # Documentação do projeto
-├── USAGE.md                    # Guia de uso
+├── USAGE.md                    # Guia de uso (extração)
+├── PREPROCESSING.md            # Guia de pré-processamento
 ├── ARCHITECTURE.md             # Este arquivo
 ├── pyproject.toml             # Dependências
 └── .gitignore
@@ -95,6 +104,13 @@ Extração de dados usando a API FastF1.
 - Extrai voltas, telemetria, clima, mensagens de controle
 - Salva dados em formato Parquet
 - Organiza por temporada/rodada
+
+#### `src/preprocessing/`
+Pré-processamento matemático de dados usando SciPy.
+- **Interpolação**: Sincroniza telemetria em grid comum (scipy.interpolate)
+- **Signal Processing**: Remove ruído, calcula derivadas (scipy.signal)
+- **Feature Engineering**: Z-scores, outliers, degradação (scipy.stats)
+- Prepara dados para pipeline ML
 
 ### Módulos Planejados
 
@@ -136,22 +152,42 @@ Rastreamento e monitoramento com MLflow.
 └──────┬──────┘
        │
        ↓
-┌─────────────────┐
-│  Extração       │ [IMPLEMENTADO]
-│  (src/extraction)│
-└──────┬──────────┘
+┌─────────────────────┐
+│  Extração           │ [IMPLEMENTADO]
+│  (src/extraction)   │
+│  • FastF1           │
+│  • Pandas           │
+└──────┬──────────────┘
        │
        ↓
-┌─────────────────┐
-│  Dados Brutos   │
-│  (data/raw/)    │
-└──────┬──────────┘
+┌─────────────────────┐
+│  Dados Brutos       │
+│  (data/raw/)        │
+│  • Parquet          │
+└──────┬──────────────┘
        │
        ↓
-┌─────────────────┐
-│  Pipeline ML    │ [PLANEJADO]
-│  (src/ml/)      │
-└──────┬──────────┘
+┌─────────────────────┐
+│  Pré-processamento  │ [IMPLEMENTADO]
+│  (src/preprocessing)│
+│  • SciPy            │
+│  • NumPy            │
+└──────┬──────────────┘
+       │
+       ↓
+┌─────────────────────┐
+│  Dados Processados  │
+│  (data/processed/)  │
+│  • Features         │
+└──────┬──────────────┘
+       │
+       ↓
+┌─────────────────────┐
+│  Pipeline ML        │ [PLANEJADO]
+│  (src/ml/)          │
+│  • Ruptures         │
+│  • Scikit-learn     │
+└──────┬──────────────┘
        │
        ↓
 ┌─────────────────┐
@@ -180,38 +216,46 @@ Rastreamento e monitoramento com MLflow.
 
 | Componente | Tecnologia | Status |
 |-----------|-----------|--------|
-| Extração de Dados | FastF1, Pandas, NumPy | Implementado |
-| Armazenamento | Parquet (PyArrow) | Implementado |
-| ML | Ruptures, Scikit-learn, SciPy | Planejado |
+| Extração de Dados | FastF1, Pandas, NumPy | ✅ Implementado |
+| Armazenamento | Parquet (PyArrow) | ✅ Implementado |
+| Pré-processamento | SciPy (interpolate, signal, stats) | ✅ Implementado |
+| ML | Ruptures, Scikit-learn | Planejado |
 | Validação | Pydantic | Planejado |
 | API | FastAPI | Planejado |
 | LLM | DSPY, Agno | Planejado |
 | Observabilidade | MLflow | Planejado |
-| CLI | argparse | Implementado |
+| CLI | argparse | ✅ Implementado |
 
 ## Fases de Desenvolvimento
 
-### Fase 1: Extração de Dados [COMPLETA]
+### Fase 1: Extração de Dados [✅ COMPLETA]
 - [x] Integração FastF1
 - [x] Pipeline ETL
 - [x] Armazenamento Parquet
 - [x] Ferramentas CLI
 - [x] Testes
 
-### Fase 2: Pipeline ML [EM PROGRESSO]
-- [ ] Engenharia de features
+### Fase 2: Pré-processamento [✅ COMPLETA]
+- [x] Sincronização de telemetria (scipy.interpolate)
+- [x] Processamento de sinal (scipy.signal)
+- [x] Engenharia de features estatísticas (scipy.stats)
+- [x] CLI de pré-processamento
+- [x] Testes (23 testes, 100% passando)
+- [x] Documentação completa
+
+### Fase 3: Pipeline ML [EM PROGRESSO]
 - [ ] Detecção de degradação (Ruptures)
 - [ ] Detecção de anomalias (Isolation Forest)
 - [ ] Síntese de eventos
 - [ ] Validação Pydantic
 
-### Fase 3: API & LLM [EM BREVE]
+### Fase 4: API & LLM [EM BREVE]
 - [ ] Servidor FastAPI
 - [ ] Geração de relatórios DSPY
 - [ ] Chatbot Agno
 - [ ] Integração MLflow
 
-### Fase 4: Produção [FUTURO]
+### Fase 5: Produção [FUTURO]
 - [ ] Deploy
 - [ ] Monitoramento
 - [ ] CI/CD
@@ -225,8 +269,52 @@ Rastreamento e monitoramento com MLflow.
 4. **Type Safety**: Pydantic garante consistência de dados
 5. **Observabilidade**: MLflow rastreia experimentos e performance
 
+## Detalhamento do Pré-processamento
+
+### Módulos SciPy Utilizados
+
+#### 1. scipy.interpolate
+**Sincronização de telemetria em grid comum.**
+
+- **Problema**: Telemetria de pilotos diferentes tem pontos de medição em distâncias diferentes
+- **Solução**: Interpolação cúbica spline para criar grid uniforme
+- **Benefício**: Permite comparação direta ponto-a-ponto entre pilotos
+
+#### 2. scipy.signal
+**Processamento de sinal e remoção de ruído.**
+
+- **Problema**: Sensores têm ruído elétrico e spikes anormais
+- **Solução**: Filtros medianos e Savitzky-Golay
+- **Benefício**: Dados limpos preservando características físicas reais
+
+#### 3. scipy.stats
+**Engenharia de features estatísticas.**
+
+- **Problema**: Identificar voltas anormais e calcular degradação
+- **Solução**: Z-scores, regressão linear, estatísticas descritivas
+- **Benefício**: Features prontas para ML e detecção de outliers
+
+### Pipeline Típico
+
+```python
+# 1. Carregar dados brutos
+laps = pd.read_parquet('data/raw/races/2025/round_01/laps.parquet')
+
+# 2. Pré-processar (scipy.stats)
+from src.preprocessing.feature_engineering import enrich_dataframe_with_stats
+enriched = enrich_dataframe_with_stats(laps, include_degradation=True)
+
+# 3. Filtrar outliers
+clean = enriched[~enriched['is_outlier']]
+
+# 4. Usar em ML
+# ... aplicar Ruptures, Scikit-learn, etc.
+```
+
 ## Referências
 
+- [Guia de Uso - Extração](USAGE.md)
+- [Guia de Pré-processamento](PREPROCESSING.md)
 - [Detalhes da Arquitetura](docs/architecture.md)
 - [Documentação da API](docs/api.md)
 - [Pipeline ML](docs/ml_pipeline.md)

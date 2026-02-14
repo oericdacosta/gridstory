@@ -16,8 +16,9 @@ O projeto está sendo desenvolvido em fases modulares, com a fase de extração 
 
 | Módulo | Status | Descrição |
 |--------|--------|-----------|
-| Extração de Dados | Implementado | FastF1, Pandas, NumPy |
-| Pipeline ML | Planejado | Ruptures, Scikit-learn, SciPy |
+| Extração de Dados | ✅ Implementado | FastF1, Pandas, NumPy |
+| Pré-processamento | ✅ Implementado | SciPy (interpolação, signal processing, features) |
+| Pipeline ML | Planejado | Ruptures, Scikit-learn |
 | Validação | Planejado | Pydantic |
 | API | Planejado | FastAPI |
 | LLM | Planejado | DSPY, Agno |
@@ -43,7 +44,7 @@ uv sync
 
 ## Uso Rápido
 
-### Extrair Dados de uma Corrida
+### 1. Extrair Dados de uma Corrida
 
 ```bash
 # Extrair primeira corrida de 2025 com telemetria
@@ -56,9 +57,28 @@ uv run python cli/extract.py --calendar 2025
 uv run python cli/extract.py --batch 2025 "1,2,3,4,5" --telemetry
 ```
 
-Para mais detalhes, veja:
-- [src/extraction/README.md](src/extraction/README.md) - Documentação completa de extração
-- [USAGE.md](USAGE.md) - Guia de uso avançado
+### 2. Pré-processar Dados
+
+```bash
+# Listar dados disponíveis
+uv run python cli/list_data.py
+
+# Pré-processar voltas (features estatísticas)
+uv run python cli/preprocess.py --year 2025 --round 1 --laps --save
+
+# Pré-processar telemetria (sincronização, limpeza)
+uv run python cli/preprocess.py --year 2025 --round 1 --telemetry --save
+
+# Ver amostra dos dados em tabela
+uv run python cli/preprocess.py --year 2025 --round 1 --laps --show-sample
+```
+
+### Documentação Completa
+
+- [USAGE.md](USAGE.md) - Guia de extração de dados
+- [PREPROCESSING.md](PREPROCESSING.md) - Guia de pré-processamento (SciPy)
+- [src/extraction/README.md](src/extraction/README.md) - Documentação do módulo de extração
+- [src/preprocessing/README.md](src/preprocessing/README.md) - Documentação do módulo de pré-processamento
 - [cli/README.md](cli/README.md) - Documentação dos CLIs
 
 ## Estrutura do Projeto
@@ -67,13 +87,15 @@ Para mais detalhes, veja:
 pitwall-ai/
 ├── cli/                    # Scripts de linha de comando
 ├── src/                    # Código-fonte
-│   ├── extraction/         # Extração de dados (implementado)
+│   ├── extraction/         # Extração de dados (✅ implementado)
+│   ├── preprocessing/      # Pré-processamento SciPy (✅ implementado)
 │   ├── ml/                 # Pipeline ML (planejado)
 │   ├── models/             # Modelos Pydantic (planejado)
 │   ├── api/                # FastAPI (planejado)
 │   ├── llm/                # Integração LLM (planejado)
 │   └── utils/              # Utilitários
 ├── tests/                  # Testes automatizados
+├── examples/               # Exemplos de uso
 ├── data/                   # Dados (não versionado)
 ├── docs/                   # Documentação
 ├── notebooks/              # Jupyter notebooks
@@ -81,7 +103,9 @@ pitwall-ai/
 └── main.py                 # Entry point (futuro: servidor API)
 ```
 
-## Dados Extraídos
+## Funcionalidades
+
+### 1. Extração de Dados (✅ Implementado)
 
 A ferramenta extrai dados completos de corridas:
 
@@ -92,6 +116,33 @@ A ferramenta extrai dados completos de corridas:
 - **Resultados**: Classificação final, pontos, status
 
 Os dados são salvos em formato Parquet para eficiência e organizados por temporada e rodada.
+
+### 2. Pré-processamento com SciPy (✅ Implementado)
+
+Motor matemático que transforma dados brutos em features prontas para ML:
+
+- **Sincronização de Telemetria** (`scipy.interpolate`): Alinha dados de diferentes pilotos em grid comum de distância para comparações diretas
+- **Processamento de Sinal** (`scipy.signal`): Remove ruído de sensores, calcula derivadas (aceleração), preserva informação importante
+- **Features Estatísticas** (`scipy.stats`): Detecta outliers com Z-score, calcula taxa de degradação de pneus, estatísticas descritivas
+
+**Exemplos**:
+```python
+# Sincronizar telemetria de dois pilotos para comparação
+from src.preprocessing.interpolation import synchronize_telemetry
+ver_sync = synchronize_telemetry(ver_telemetry, track_length=5281.0)
+ham_sync = synchronize_telemetry(ham_telemetry, track_length=5281.0)
+speed_delta = ver_sync['Speed'] - ham_sync['Speed']
+
+# Limpar ruído e calcular aceleração
+from src.preprocessing.signal_processing import apply_telemetry_pipeline
+processed = apply_telemetry_pipeline(telemetry, calculate_derivatives=True)
+
+# Detectar outliers e calcular degradação de pneus
+from src.preprocessing.feature_engineering import enrich_dataframe_with_stats
+enriched = enrich_dataframe_with_stats(laps_df, group_by=['Driver', 'Stint'])
+```
+
+Veja [src/preprocessing/README.md](src/preprocessing/README.md) para documentação completa.
 
 ## Arquitetura
 
@@ -113,9 +164,10 @@ Para detalhes completos, veja [ARCHITECTURE.md](ARCHITECTURE.md) e [docs/archite
 
 | Camada | Tecnologia | Status |
 |--------|-----------|--------|
-| Extração | FastF1, Pandas, NumPy | Implementado |
-| Armazenamento | Parquet (PyArrow) | Implementado |
-| ML | Ruptures, Scikit-learn, SciPy | Planejado |
+| Extração | FastF1, Pandas, NumPy | ✅ Implementado |
+| Armazenamento | Parquet (PyArrow) | ✅ Implementado |
+| Pré-processamento | SciPy (interpolate, signal, stats) | ✅ Implementado |
+| ML | Ruptures, Scikit-learn | Planejado |
 | Validação | Pydantic | Planejado |
 | API | FastAPI | Planejado |
 | LLM | DSPY, Agno | Planejado |
@@ -123,17 +175,37 @@ Para detalhes completos, veja [ARCHITECTURE.md](ARCHITECTURE.md) e [docs/archite
 
 ## Documentação
 
-- [USAGE.md](USAGE.md) - Guia completo de uso
-- [ARCHITECTURE.md](ARCHITECTURE.md) - Visão geral da arquitetura
-- [docs/](docs/) - Documentação detalhada
+### Guias de Uso
+- [USAGE.md](USAGE.md) - Guia de extração de dados
+- [PREPROCESSING.md](PREPROCESSING.md) - Guia de pré-processamento com SciPy
+- [ARCHITECTURE.md](ARCHITECTURE.md) - Arquitetura do projeto
+
+### Documentação dos Módulos
 - [src/extraction/README.md](src/extraction/README.md) - Módulo de extração
+- [src/preprocessing/README.md](src/preprocessing/README.md) - Módulo de pré-processamento
+- [cli/README.md](cli/README.md) - Ferramentas CLI
+
+### Documentação Técnica
+- [docs/](docs/) - Documentação detalhada (arquitetura, API, ML pipeline)
 
 ## Testes
 
 ```bash
 # Executar testes de extração
 uv run python tests/test_extraction/test_basic.py
+
+# Executar testes de pré-processamento (23 testes)
+uv run pytest tests/preprocessing/ -v
+
+# Rodar exemplos práticos
+uv run python examples/preprocessing_example.py
 ```
+
+**Cobertura de Testes:**
+- ✅ Extração: Testado manualmente
+- ✅ Pré-processamento: 23 testes unitários (100% passando)
+- ⏳ ML Pipeline: Planejado
+- ⏳ API: Planejado
 
 ## Configuração
 
