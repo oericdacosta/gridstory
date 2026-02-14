@@ -1,423 +1,719 @@
-# Guia de Pré-processamento - SciPy
+# Guia de Pré-processamento - PitWall AI
 
-Este guia mostra como usar o módulo de pré-processamento de dados de telemetria F1 usando **SciPy**.
+Documentação completa do pré-processamento de **TODOS os dados** de corridas F1 usando NumPy, Pandas e SciPy.
 
 ## Visão Geral
 
-O módulo de pré-processamento transforma dados brutos extraídos do FastF1 em features matemáticas limpas e sincronizadas, prontas para análise de Machine Learning. Ele utiliza três submódulos principais do SciPy:
+O módulo de pré-processamento transforma **5 tipos de dados brutos** em features matemáticas limpas e estruturadas, prontas para análise ML:
 
-- **`scipy.interpolate`**: Sincronização de telemetria
-- **`scipy.signal`**: Processamento de sinal e remoção de ruído
-- **`scipy.stats`**: Engenharia de features estatísticas
+1. **Laps** - Voltas e estratégia
+2. **Telemetria** - Dados do carro
+3. **Race Control** - Eventos da corrida
+4. **Weather** - Condições meteorológicas
+5. **Results** - Classificação final
+
+**Bibliotecas utilizadas:**
+- **NumPy** - Cálculos vetoriais e arrays
+- **Pandas** - Manipulação de DataFrames
+- **SciPy** - Ferramentas científicas especializadas:
+  - `scipy.interpolate` - Sincronização de telemetria
+  - `scipy.signal` - Processamento de sinal e remoção de ruído
+  - `scipy.stats` - Estatísticas e features
+
+---
 
 ## Instalação
 
-As dependências já estão incluídas no projeto:
-
 ```bash
-uv sync  # SciPy, NumPy e Pandas já incluídos
+uv sync  # NumPy, Pandas e SciPy já incluídos
 ```
 
-## Estrutura dos Dados
-
-### Entrada (Dados Brutos)
-```
-data/raw/races/2025/round_01/
-├── laps.parquet           # Voltas com tempos, compostos, stints
-└── telemetry/             # Telemetria por piloto
-    ├── VER.parquet        # Speed, RPM, Throttle, Brake, Distance
-    └── ...
-```
-
-### Saída (Dados Pré-processados)
-```
-data/processed/
-├── laps_processed_2025_01_R.parquet      # Voltas + features estatísticas
-└── telemetry_processed_2025_01_R.parquet # Telemetria sincronizada e limpa
-```
+---
 
 ## Uso Básico
 
-### 1. Listar Dados Disponíveis
+### Pipeline Completo (Recomendado)
 
 ```bash
-uv run python cli/list_data.py
+# Extração + Pré-processamento de TUDO em um comando
+uv run python cli/pipeline.py 2025 1
+
+# Ver amostras dos dados processados
+uv run python cli/pipeline.py 2025 1 --show-sample
 ```
 
-Mostra todos os dados brutos e pré-processados disponíveis.
-
-### 2. Pré-processar Dados de Voltas
+### Pré-processamento Individual
 
 ```bash
-# Ver estatísticas sem salvar
-uv run python cli/preprocess.py --year 2025 --round 1 --laps
+# Apenas pré-processar (dados já extraídos)
+uv run python cli/preprocess.py --year 2025 --round 1 --all --save
 
-# Ver estatísticas E salvar dados processados
+# Apenas laps
 uv run python cli/preprocess.py --year 2025 --round 1 --laps --save
 
-# Ver amostra dos dados em formato de tabela
-uv run python cli/preprocess.py --year 2025 --round 1 --laps --show-sample
+# Apenas telemetria
+uv run python cli/preprocess.py --year 2025 --round 1 --telemetry --save
 ```
 
-**O que é calculado:**
-- ✅ Z-scores para cada volta
-- ✅ Detecção de outliers estatísticos (|z| > 3)
-- ✅ Taxa de degradação de pneu (segundos/volta)
-- ✅ Estatísticas descritivas por grupo (média, desvio, assimetria, curtose)
+---
 
-### 3. Pré-processar Telemetria
+## 1. Pré-processamento de LAPS
 
-```bash
-# Telemetria de todos os pilotos
-uv run python cli/preprocess.py --year 2025 --round 1 --telemetry
+### Dados Brutos (Entrada)
 
-# Filtrar por piloto específico
-uv run python cli/preprocess.py --year 2025 --round 1 --telemetry --driver VER
+**Arquivo:** `data/raw/races/YEAR/round_XX/laps.parquet`
 
-# Filtrar piloto E volta específica
-uv run python cli/preprocess.py --year 2025 --round 1 --telemetry --driver VER --lap 10 --save
+**Estrutura:**
+```
+Driver | LapNumber | LapTime_seconds | Compound | TyreLife | Stint
+-------|-----------|-----------------|----------|----------|------
+VER    | 1         | 90.234          | SOFT     | 1        | 1
+VER    | 2         | 89.987          | SOFT     | 2        | 1
+HAM    | 1         | 90.456          | MEDIUM   | 1        | 1
 ```
 
-**O que é calculado:**
-- ✅ Sincronização em grid comum de distância (interpolação cúbica spline)
-- ✅ Remoção de ruído de sensores (filtro mediano)
-- ✅ Suavização de sinais (Savitzky-Golay)
-- ✅ Cálculo de derivadas (aceleração, jerk)
+### O Que é Feito
 
-### 4. Pré-processar Tudo
+**Função:** `enrich_dataframe_with_stats()`
 
-```bash
-# Processar voltas + telemetria de uma vez
-uv run python cli/preprocess.py --year 2025 --round 1 --all --save
+**Localização:** `src/preprocessing/feature_engineering.py`
+
+#### 1. Features Estatísticas (Z-score)
+```python
+# Calcular Z-score por grupo (Driver, Compound)
+df['z_score'] = df.groupby(['Driver', 'Compound'])['LapTime_seconds'].transform(
+    lambda x: stats.zscore(x, nan_policy='omit')
+)
+
+# Detectar outliers (|z| > 3)
+df['is_outlier'] = np.abs(df['z_score']) > 3
 ```
 
-### 5. Processar Múltiplas Corridas
+**Por quê:** Identifica voltas anormais (tráfego, safety car, erro de piloto)
 
-```bash
-# Loop para processar corridas 1, 2 e 3
-for i in 1 2 3; do
-  uv run python cli/preprocess.py --year 2025 --round $i --all --save
-done
+#### 2. Taxa de Degradação de Pneu
+```python
+# Regressão linear: LapTime vs LapNumber
+slope, intercept, r_value, p_value, std_err = stats.linregress(lap_numbers, lap_times)
+
+df['degradation_slope'] = slope      # segundos/volta
+df['degradation_r_squared'] = r_value ** 2
 ```
 
-## Uso Avançado (Python)
+**Por quê:** Quantifica quanto o pneu degrada por volta
 
-### Engenharia de Features Estatísticas
+**Interpretação:**
+- `+0.5 s/volta` = Pneu degradando (tempos piorando)
+- `-0.5 s/volta` = Tempos melhorando (pista secando, combustível queimando)
+- `R² > 0.4` = Degradação linear clara
+
+#### 3. Estatísticas Descritivas
+```python
+stats_dict = {
+    'nobs': número de observações,
+    'mean': média,
+    'variance': variância,
+    'skewness': assimetria,
+    'kurtosis': curtose,
+    'min': mínimo,
+    'max': máximo
+}
+```
+
+**Por quê:** Contexto estatístico para análise ML
+
+### Dados Processados (Saída)
+
+**Arquivo:** `data/processed/races/YEAR/round_XX/laps_processed.parquet`
+
+**Novas colunas:**
+- `z_score` - Score padronizado
+- `is_outlier` - Flag de outlier (True/False)
+- `group_mean`, `group_std` - Estatísticas do grupo
+- `degradation_slope` - Taxa de degradação (s/volta)
+- `degradation_r_squared` - Qualidade do ajuste
+- `group_nobs`, `group_skewness`, `group_kurtosis` - Estatísticas descritivas
+
+### Exemplo de Uso
 
 ```python
 import pandas as pd
-from src.preprocessing.feature_engineering import enrich_dataframe_with_stats
 
-# Carregar dados brutos
-laps_df = pd.read_parquet('data/raw/races/2025/round_01/laps.parquet')
-
-# Adicionar features estatísticas
-enriched = enrich_dataframe_with_stats(
-    laps_df,
-    value_column='LapTime_seconds',
-    group_by=['Driver', 'Compound', 'Stint'],
-    include_degradation=True
-)
+laps = pd.read_parquet('data/processed/races/2025/round_01/laps_processed.parquet')
 
 # Filtrar outliers
-clean_laps = enriched[~enriched['is_outlier']]
+clean_laps = laps[~laps['is_outlier']]
 
-# Analisar degradação
-for driver in ['VER', 'HAM', 'LEC']:
-    driver_data = enriched[enriched['Driver'] == driver]
-
-    for stint in driver_data['Stint'].unique():
-        stint_data = driver_data[driver_data['Stint'] == stint].iloc[0]
-
-        slope = stint_data['degradation_slope']
-        r2 = stint_data['degradation_r_squared']
-        compound = stint_data['Compound']
-
-        print(f"{driver} - Stint {stint} ({compound}): {slope:.3f}s/volta (R²={r2:.2f})")
+# Analisar degradação por piloto
+for driver in clean_laps['Driver'].unique():
+    driver_data = clean_laps[clean_laps['Driver'] == driver]
+    print(f"{driver}: {driver_data['degradation_slope'].iloc[0]:.3f} s/volta")
 ```
 
-### Sincronização de Telemetria
+---
+
+## 2. Pré-processamento de TELEMETRIA
+
+### Dados Brutos (Entrada)
+
+**Arquivo:** `data/raw/races/YEAR/round_XX/telemetry/VER.parquet`
+
+**Estrutura:**
+```
+Time_seconds | Speed | RPM   | Throttle | Brake | nGear | DRS  | Distance
+-------------|-------|-------|----------|-------|-------|------|----------
+0.0          | 285   | 11200 | 100      | False | 8     | True | 0.0
+0.01         | 287   | 11350 | 100      | False | 8     | True | 2.9
+```
+
+**Problemas:**
+- Frequências diferentes entre pilotos
+- Ruído de sensores
+- Não sincronizados (difícil comparar)
+
+### O Que é Feito
+
+#### Passo 1: Sincronização (scipy.interpolate)
+
+**Função:** `synchronize_telemetry()`
+
+**Localização:** `src/preprocessing/interpolation.py`
+
+```python
+# Criar grid comum de distância
+dist_grid = np.linspace(0, track_length, num=1000)
+
+# Interpolar cada canal usando spline cúbica
+spline = make_interp_spline(original_distance, channel_values, k=3)
+interpolated = spline(dist_grid)
+```
+
+**Por quê:** Alinha dados de diferentes pilotos em grid comum, permitindo comparações diretas.
+
+**Antes:**
+```
+VER: [0m, 2.9m, 5.7m, ...]  (pontos irregulares)
+HAM: [0m, 3.1m, 6.2m, ...]  (pontos diferentes)
+```
+
+**Depois:**
+```
+VER: [0m, 5.28m, 10.56m, ...]  (grid uniforme)
+HAM: [0m, 5.28m, 10.56m, ...]  (mesmo grid!)
+```
+
+#### Passo 2: Limpeza de Ruído (scipy.signal)
+
+**Função:** `apply_telemetry_pipeline()`
+
+**Localização:** `src/preprocessing/signal_processing.py`
+
+```python
+# Remover outliers
+cleaned, outlier_mask = remove_outliers(signal, threshold=3.0, method='median')
+
+# Filtro mediano (remove spikes)
+cleaned = medfilt(signal, kernel_size=5)
+
+# Filtro Savitzky-Golay (suavização)
+cleaned = savgol_filter(signal, kernel_size, polyorder)
+```
+
+**Por quê:** Sensores têm ruído. Filtros preservam informação importante (pontos de frenagem) removendo spikes.
+
+#### Passo 3: Calcular Derivadas
+
+```python
+# Aceleração a partir de velocidade
+df['Speed_derivative'] = calculate_derivative(speed, delta_x=distance_step)
+
+# Taxa de mudança do acelerador
+df['Throttle_derivative'] = calculate_derivative(throttle)
+```
+
+**Por quê:** Derivadas revelam aceleração, jerk, zonas de frenagem.
+
+### Dados Processados (Saída)
+
+**Arquivo:** `data/processed/races/YEAR/round_XX/telemetry/VER_processed.parquet`
+
+**Novas colunas:**
+- `Speed_derivative` - Aceleração (km/h/s)
+- `Throttle_derivative` - Taxa de mudança do acelerador
+- `Brake_derivative` - Taxa de mudança do freio
+- Todos os canais sincronizados em 1000 pontos
+- Ruído removido, outliers corrigidos
+
+### Exemplo de Uso
 
 ```python
 import pandas as pd
-from src.preprocessing.interpolation import synchronize_telemetry
 
-# Carregar telemetria de dois pilotos
-ver_telem = pd.read_parquet('data/raw/races/2025/round_01/telemetry/VER.parquet')
-ham_telem = pd.read_parquet('data/raw/races/2025/round_01/telemetry/HAM.parquet')
+# Carregar telemetria processada
+ver = pd.read_parquet('data/processed/races/2025/round_01/telemetry/VER_processed.parquet')
+ham = pd.read_parquet('data/processed/races/2025/round_01/telemetry/HAM_processed.parquet')
 
-track_length = 5281.0  # Monaco em metros
-
-# Sincronizar ambos no mesmo grid de distância
-ver_sync = synchronize_telemetry(ver_telem, track_length, num_points=1000)
-ham_sync = synchronize_telemetry(ham_telem, track_length, num_points=1000)
-
-# Agora pode calcular deltas diretamente
-speed_delta = ver_sync['Speed'].values - ham_sync['Speed'].values
-
+# Comparar velocidades (sincronizadas!)
+speed_delta = ver['Speed'] - ham['Speed']
 print(f"Vantagem máxima VER: {speed_delta.max():.2f} km/h")
-print(f"Vantagem máxima HAM: {abs(speed_delta.min()):.2f} km/h")
+
+# Analisar aceleração
+acceleration = ver['Speed_derivative']
+print(f"Aceleração máxima: {acceleration.max():.2f} km/h/s")
 ```
 
-### Processamento de Sinal
+---
 
+## 3. Pré-processamento de RACE CONTROL
+
+### Dados Brutos (Entrada)
+
+**Arquivo:** `data/raw/races/YEAR/round_XX/race_control.parquet`
+
+**Estrutura:**
+```
+Time             | Category   | Message                    | Status
+-----------------|------------|----------------------------|--------
+00:10:23.456     | Flag       | YELLOW FLAG - TURN 1       | None
+00:15:30.123     | SafetyCar  | SAFETY CAR DEPLOYED        | DEPLOYED
+00:20:45.789     | Other      | CAR 44 - INVESTIGATION     | None
+```
+
+**Problemas:**
+- Dados são texto livre (difícil analisar)
+- Falta severidade do evento
+- Timestamp em formato variado
+
+### O Que é Feito
+
+**Função:** `preprocess_race_control()`
+
+**Localização:** `src/preprocessing/feature_engineering.py`
+
+#### 1. Normalizar Timestamps
 ```python
-import numpy as np
-from src.preprocessing.signal_processing import apply_telemetry_pipeline
+df['time_seconds'] = df['Time'].dt.total_seconds()
+```
 
-# Extrair canais de telemetria
-telemetry_dict = {
-    'Speed': speed_array,
-    'Throttle': throttle_array,
-    'Brake': brake_array,
-    'RPM': rpm_array,
-}
-
-# Aplicar pipeline completo
-processed = apply_telemetry_pipeline(
-    telemetry_dict,
-    noise_reduction=True,      # Remove ruído com filtro mediano
-    outlier_removal=True,       # Remove spikes de sensores
-    calculate_derivatives=True  # Calcula aceleração
+#### 2. Criar Indicadores Binários
+```python
+# Safety Car
+df['is_safety_car'] = df.apply(
+    lambda row: any(kw in str(row['message']).upper()
+                   for kw in ['SAFETY CAR', 'VSC', 'SC DEPLOYED']),
+    axis=1
 )
 
-# Acessar dados processados
-clean_speed = processed['Speed']
-acceleration = processed['Speed_derivative']
+# Bandeiras
+df['is_flag'] = df.apply(
+    lambda row: any(kw in str(row['message']).upper()
+                   for kw in ['YELLOW FLAG', 'RED FLAG', 'FLAG']),
+    axis=1
+)
 
-print(f"Aceleração máxima: {np.nanmax(acceleration):.2f}")
-print(f"Desaceleração máxima: {np.nanmin(acceleration):.2f}")
+# Penalidades
+df['is_penalty'] = df.apply(
+    lambda row: any(kw in str(row['message']).upper()
+                   for kw in ['PENALTY', 'TIME PENALTY']),
+    axis=1
+)
 ```
 
-## Interpretando os Resultados
+**Por quê:** Transforma texto em flags 0/1 para análise ML.
 
-### Z-Score
-- **z_score < -3 ou > +3**: Outlier estatístico
-- **-1 < z_score < +1**: Valor normal
-- **Exemplo**: `z_score = 2.5` significa 2.5 desvios padrão acima da média
+#### 3. Calcular Severidade
+```python
+def calculate_severity(row):
+    msg = str(row['message']).upper()
 
-### Taxa de Degradação
-- **Valor positivo** (+0.5s/volta): Pneu degradando, tempos piorando
-- **Valor negativo** (-0.5s/volta): Tempos melhorando (pista secando, combustível queimando)
-- **R² alto** (>0.4): Degradação linear clara
-- **R² baixo** (<0.1): Muita variação, sem padrão linear (condições instáveis)
+    # Crítico (2)
+    if any(kw in msg for kw in ['RED FLAG', 'SAFETY CAR DEPLOYED']):
+        return 2
+
+    # Atenção (1)
+    if any(kw in msg for kw in ['YELLOW FLAG', 'VSC', 'PENALTY']):
+        return 1
+
+    # Info (0)
+    return 0
+```
+
+**Por quê:** Hierarquia de importância (0=info, 1=warning, 2=critical).
+
+### Dados Processados (Saída)
+
+**Arquivo:** `data/processed/races/YEAR/round_XX/race_control_processed.parquet`
+
+**Novas colunas:**
+- `time_seconds` - Tempo normalizado
+- `is_safety_car` - Flag (0/1)
+- `is_flag` - Flag (0/1)
+- `is_penalty` - Flag (0/1)
+- `is_drs` - Flag (0/1)
+- `category_encoded` - Categoria numérica (0-4)
+- `event_severity` - Severidade (0/1/2)
+
+### Exemplo de Uso
+
+```python
+import pandas as pd
+
+rc = pd.read_parquet('data/processed/races/2025/round_01/race_control_processed.parquet')
+
+# Safety car events
+safety_cars = rc[rc['is_safety_car'] == 1]
+print(f"Safety cars: {len(safety_cars)}")
+
+# Eventos críticos
+critical = rc[rc['event_severity'] == 2]
+```
+
+---
+
+## 4. Pré-processamento de WEATHER
+
+### Dados Brutos (Entrada)
+
+**Arquivo:** `data/raw/races/YEAR/round_XX/weather.parquet`
+
+**Estrutura:**
+```
+Time     | AirTemp | TrackTemp | Humidity | Pressure | Rainfall | WindSpeed
+---------|---------|-----------|----------|----------|----------|----------
+00:00:00 | 24.5    | 38.2      | 55       | 1013     | False    | 2.3
+00:01:00 | 24.6    | NaN       | 56       | 1013     | False    | 2.1
+00:02:00 | NaN     | 38.5      | 55       | NaN      | False    | 2.4
+```
+
+**Problemas:**
+- Valores faltantes (NaN)
+- Temperaturas não normalizadas
+- Falta tendências (subindo/descendo)
+
+### O Que é Feito
+
+**Função:** `preprocess_weather()`
+
+**Localização:** `src/preprocessing/feature_engineering.py`
+
+#### 1. Interpolar Valores Faltantes
+```python
+for col in ['AirTemp', 'TrackTemp', 'Humidity']:
+    df[col] = df[col].interpolate(method='linear', limit_direction='both')
+    df[col] = df[col].fillna(df[col].mean())
+```
+
+**Por quê:** Sensores podem falhar. Interpolação linear preenche gaps.
 
 **Exemplo:**
 ```
-NOR, Stint 5 (HARD): -4.911s/volta (R²=0.42)
+Antes:  [24.5, NaN, NaN, 27.5]
+Depois: [24.5, 25.5, 26.5, 27.5]
 ```
-- Lando Norris melhorou 4.9s por volta no stint 5
-- 42% da variação é explicada pela tendência linear
-- Provavelmente: pista secando ou carro aliviando
 
-### Outliers
-- **is_outlier = True**: Volta estatisticamente anormal
-- **Causas comuns**: Safety Car, tráfego, erro de piloto, problema técnico
-- **Usar para**: Filtrar voltas antes de análises de performance
+#### 2. Normalizar Temperaturas (Z-score)
+```python
+air_mean = df['AirTemp'].mean()
+air_std = df['AirTemp'].std()
+df['air_temp_normalized'] = (df['AirTemp'] - air_mean) / air_std
+```
 
-## Estrutura dos Módulos
+**Por quê:** Z-score coloca valores em escala comum (média=0, std=1).
 
-### `src/preprocessing/interpolation.py`
-**Sincronização de telemetria usando interpolação cúbica spline.**
+#### 3. Calcular Delta e Tendências
+```python
+# Diferença pista-ar
+df['temp_delta'] = df['TrackTemp'] - df['AirTemp']
 
-Funções principais:
-- `synchronize_telemetry()`: Sincroniza telemetria em grid comum
-- `synchronize_multiple_laps()`: Cria matriz de voltas sincronizadas
+# Tendência de temperatura
+df['temp_trend'] = df['TrackTemp'].diff().fillna(0)
 
-**Casos de uso:**
-- Comparar telemetria de pilotos diferentes
-- Calcular deltas ponto-a-ponto
-- Preparar dados para modelos ML
+# Direção: 1=subindo, -1=descendo, 0=estável
+df['temp_trend_direction'] = np.where(df['temp_trend'] > 0.5, 1,
+                              np.where(df['temp_trend'] < -0.5, -1, 0))
+```
 
-### `src/preprocessing/signal_processing.py`
-**Processamento de sinal e remoção de ruído.**
+#### 4. Detectar Mudanças Bruscas
+```python
+# Temperatura: > 2 desvios padrão
+temp_std = df['temp_trend'].std()
+df['weather_change'] = (np.abs(df['temp_trend']) > 2 * temp_std).astype(int)
 
-Funções principais:
-- `clean_signal()`: Remove ruído (filtro mediano ou Savitzky-Golay)
-- `calculate_derivative()`: Calcula derivadas suaves
-- `remove_outliers()`: Detecta e remove outliers
-- `apply_telemetry_pipeline()`: Pipeline completo
+# Chuva começando
+rain_change = df['Rainfall'].diff()
+df['weather_change'] = np.maximum(df['weather_change'], (rain_change > 0).astype(int))
+```
 
-**Casos de uso:**
-- Limpar ruído de sensores
-- Calcular aceleração/desaceleração
-- Remover spikes anormais
+**Por quê:** Mudanças bruscas ou início de chuva são eventos importantes.
 
-### `src/preprocessing/feature_engineering.py`
-**Engenharia de features estatísticas.**
+### Dados Processados (Saída)
 
-Funções principais:
-- `calculate_statistical_features()`: Z-scores e outliers
-- `calculate_degradation_rate()`: Regressão linear de degradação
-- `calculate_descriptive_statistics()`: Estatísticas descritivas
-- `enrich_dataframe_with_stats()`: Pipeline completo
+**Arquivo:** `data/processed/races/YEAR/round_XX/weather_processed.parquet`
 
-**Casos de uso:**
-- Detectar voltas anormais
-- Calcular degradação de pneu
-- Preparar features para ML
+**Novas colunas:**
+- `time_seconds` - Tempo normalizado
+- `air_temp_normalized` - Z-score
+- `track_temp_normalized` - Z-score
+- `temp_delta` - Diferença pista-ar
+- `rainfall_indicator` - Binário (0/1)
+- `temp_trend` - Variação de temperatura
+- `temp_trend_direction` - 1=subindo, -1=descendo, 0=estável
+- `weather_change` - Flag de mudança brusca (0/1)
 
-## Exemplos Práticos
-
-### Exemplo 1: Análise de Degradação de Pneu
+### Exemplo de Uso
 
 ```python
 import pandas as pd
-from src.preprocessing.feature_engineering import enrich_dataframe_with_stats
 
-# Carregar dados
-laps = pd.read_parquet('data/raw/races/2025/round_01/laps.parquet')
+weather = pd.read_parquet('data/processed/races/2025/round_01/weather_processed.parquet')
 
-# Filtrar apenas um piloto
-ver_laps = laps[laps['Driver'] == 'VER']
+# Períodos de chuva
+rain = weather[weather['rainfall_indicator'] == 1]
 
-# Calcular degradação
-enriched = enrich_dataframe_with_stats(
-    ver_laps,
-    value_column='LapTime_seconds',
-    group_by=['Stint', 'Compound'],
-    include_degradation=True
-)
+# Mudanças bruscas
+changes = weather[weather['weather_change'] == 1]
 
-# Mostrar degradação por stint
-for stint in enriched['Stint'].unique():
-    stint_data = enriched[enriched['Stint'] == stint].iloc[0]
+# Temperatura subindo
+heating = weather[weather['temp_trend_direction'] == 1]
+```
 
-    slope = stint_data['degradation_slope']
-    compound = stint_data['Compound']
+---
 
-    if slope > 0:
-        print(f"Stint {stint} ({compound}): Degradação de {slope:.3f}s/volta")
+## 5. Pré-processamento de RESULTS
+
+### Dados Brutos (Entrada)
+
+**Arquivo:** `data/raw/races/YEAR/round_XX/results.parquet`
+
+**Estrutura:**
+```
+Position | GridPosition | DriverNumber | Abbreviation | Points | Status
+---------|--------------|--------------|--------------|--------|----------
+1        | 3            | 1            | VER          | 25     | Finished
+2        | 1            | 44           | HAM          | 18     | Finished
+20       | 15           | 16           | LEC          | 0      | Collision
+```
+
+**Problemas:**
+- Posições são strings às vezes
+- Status é texto livre
+- Falta análise de desempenho relativo
+
+### O Que é Feito
+
+**Função:** `preprocess_results()`
+
+**Localização:** `src/preprocessing/feature_engineering.py`
+
+#### 1. Garantir Posições Numéricas
+```python
+df['final_position'] = pd.to_numeric(df['Position'], errors='coerce')
+df['grid_position'] = pd.to_numeric(df['GridPosition'], errors='coerce')
+```
+
+#### 2. Calcular Mudança de Posição
+```python
+df['position_change'] = df['final_position'] - df['grid_position']
+df['position_gain'] = (df['position_change'] < 0).astype(int)
+```
+
+**Por quê:** Negativo = ganhou posições, Positivo = perdeu.
+
+**Exemplo:**
+```
+Grid: 10, Final: 3  → position_change = -7 (ganhou 7!)
+Grid: 2,  Final: 8  → position_change = +6 (perdeu 6)
+```
+
+#### 3. Categorizar DNF
+```python
+def categorize_dnf(status):
+    status_upper = str(status).upper()
+    if 'COLLISION' in status_upper:
+        return 'collision'
+    elif 'MECHANICAL' in status_upper or 'ENGINE' in status_upper:
+        return 'mechanical'
+    elif 'FINISHED' in status_upper:
+        return 'finished'
     else:
-        print(f"Stint {stint} ({compound}): Melhora de {abs(slope):.3f}s/volta")
+        return 'other'
 ```
 
-### Exemplo 2: Comparação de Pilotos
+#### 4. Calcular Performance Score
+```python
+# Combina: posição final + ganho de posições + pontos
+df['performance_score'] = 0.0
+
+# Posição final (invertida)
+df['performance_score'] += (max_pos + 1 - df['final_position']) / max_pos
+
+# Ganho de posições
+df['performance_score'] += df['position_change'] * -0.1
+
+# Pontos normalizados
+df['performance_score'] += df['points_normalized']
+
+# Normalizar para [0, 1]
+df['performance_score'] = (df['performance_score'] - min) / (max - min)
+```
+
+**Por quê:** Score único de desempenho relativo.
+
+### Dados Processados (Saída)
+
+**Arquivo:** `data/processed/races/YEAR/round_XX/results_processed.parquet`
+
+**Novas colunas:**
+- `final_position` - Numérica
+- `grid_position` - Numérica
+- `position_change` - Mudança (negativo = ganhou)
+- `position_gain` - Flag (0/1)
+- `finish_status` - 1=finished, 0=DNF
+- `dnf_category` - Tipo (collision, mechanical, electrical, finished, other)
+- `points_normalized` - [0-1]
+- `performance_score` - [0-1]
+
+### Exemplo de Uso
 
 ```python
-from src.preprocessing.interpolation import synchronize_telemetry
-import matplotlib.pyplot as plt
+import pandas as pd
 
-# Carregar telemetria
-ver = pd.read_parquet('data/raw/races/2025/round_01/telemetry/VER.parquet')
-lec = pd.read_parquet('data/raw/races/2025/round_01/telemetry/LEC.parquet')
+results = pd.read_parquet('data/processed/races/2025/round_01/results_processed.parquet')
 
-# Sincronizar
-track_length = 5281.0
-ver_sync = synchronize_telemetry(ver, track_length, num_points=1000)
-lec_sync = synchronize_telemetry(lec, track_length, num_points=1000)
+# Top 5 por ganho de posições
+best_gainers = results.nsmallest(5, 'position_change')
 
-# Calcular delta
-speed_delta = ver_sync['Speed'] - lec_sync['Speed']
+# Top 5 por performance
+best_performers = results.nlargest(5, 'performance_score')
 
-# Plotar
-plt.figure(figsize=(12, 6))
-plt.plot(ver_sync['Distance'], speed_delta)
-plt.xlabel('Distância (m)')
-plt.ylabel('Delta de Velocidade (km/h)')
-plt.title('VER vs LEC - Delta de Velocidade')
-plt.grid(True)
-plt.show()
+# DNFs por categoria
+dnf_stats = results[results['finish_status'] == 0]['dnf_category'].value_counts()
 ```
 
-### Exemplo 3: Detecção de Anomalias
+---
 
-```python
-from src.preprocessing.signal_processing import remove_outliers
-import numpy as np
+## Resumo: Transformações por Tipo
 
-# Extrair RPM de telemetria
-rpm_data = telemetry['RPM'].values
+| Tipo         | Biblioteca     | Transformações                                   |
+|--------------|----------------|--------------------------------------------------|
+| Laps         | scipy.stats    | Z-score, regressão linear, outliers              |
+| Telemetria   | scipy.interpolate, scipy.signal | Spline, filtro mediano, Savitzky-Golay |
+| Race Control | pandas, numpy  | Flags binários, severidade, normalização         |
+| Weather      | scipy, pandas  | Interpolação, Z-score, tendências                |
+| Results      | pandas, numpy  | Mudança de posições, categorias, performance score |
 
-# Detectar outliers
-clean_rpm, outlier_mask = remove_outliers(
-    rpm_data,
-    threshold=3.0,
-    method='median'  # Mais robusto que z-score
-)
+---
 
-print(f"Outliers encontrados: {outlier_mask.sum()} de {len(rpm_data)}")
-print(f"Percentual: {outlier_mask.sum() / len(rpm_data) * 100:.2f}%")
+## Estrutura dos Arquivos
 
-# Mostrar onde estão os outliers
-outlier_indices = np.where(outlier_mask)[0]
-print(f"Índices dos outliers: {outlier_indices}")
+### Dados Brutos
+```
+data/raw/races/YEAR/round_XX/
+├── laps.parquet
+├── telemetry/
+│   ├── VER.parquet
+│   ├── HAM.parquet
+│   └── ...
+├── race_control.parquet
+├── weather.parquet
+├── results.parquet
+└── metadata.json
 ```
 
-## Parâmetros Importantes
+### Dados Processados
+```
+data/processed/races/YEAR/round_XX/
+├── laps_processed.parquet
+├── telemetry/
+│   ├── VER_processed.parquet
+│   ├── HAM_processed.parquet
+│   └── ...
+├── race_control_processed.parquet
+├── weather_processed.parquet
+└── results_processed.parquet
+```
 
-### Sincronização de Telemetria
-- **num_points**: Número de pontos no grid (padrão: 5000)
-  - Mais pontos = maior resolução, mas arquivos maiores
-  - Menos pontos = menor resolução, processamento mais rápido
+---
 
-### Processamento de Sinal
-- **kernel_size**: Tamanho da janela do filtro (padrão: 5)
-  - Maior = mais suavização
-  - Menor = preserva mais detalhes
+## Visualizando os Dados Processados
 
-- **method**: Tipo de filtro
-  - `"median"`: Melhor para remover spikes
-  - `"savgol"`: Melhor para suavização geral
+### Durante a Execução
+```bash
+uv run python cli/pipeline.py 2025 1 --show-sample
+```
 
-### Detecção de Outliers
-- **threshold**: Número de desvios padrão (padrão: 3.0)
-  - Maior = mais tolerante (menos outliers)
-  - Menor = mais rigoroso (mais outliers)
+### Depois de Processar
+```bash
+uv run python -c "
+import pandas as pd
 
-## Troubleshooting
+# Laps
+laps = pd.read_parquet('data/processed/races/2025/round_01/laps_processed.parquet')
+print('=== LAPS ===')
+print(laps[['Driver', 'LapNumber', 'z_score', 'is_outlier', 'degradation_slope']].head())
 
-### Erro: "Nenhum valor de distância válido encontrado"
-**Causa**: Telemetria sem coluna Distance ou com valores NaN
-**Solução**: Verificar se a telemetria foi extraída corretamente
+# Race Control
+rc = pd.read_parquet('data/processed/races/2025/round_01/race_control_processed.parquet')
+print('\n=== RACE CONTROL ===')
+print(rc[['time_seconds', 'is_safety_car', 'is_flag', 'event_severity']].head())
 
-### Warning: "R² muito baixo"
-**Causa**: Condições de corrida muito variáveis (chuva, Safety Car)
-**Solução**: Normal em condições instáveis, não é erro
+# Weather
+w = pd.read_parquet('data/processed/races/2025/round_01/weather_processed.parquet')
+print('\n=== WEATHER ===')
+print(w[['time_seconds', 'AirTemp', 'TrackTemp', 'temp_delta', 'rainfall_indicator']].head())
 
-### Erro: "Coluna 'LapTime' não encontrada"
-**Causa**: Dados usando coluna 'LapTime_seconds'
-**Solução**: CLI detecta automaticamente, usar módulo atualizado
+# Results
+r = pd.read_parquet('data/processed/races/2025/round_01/results_processed.parquet')
+print('\n=== RESULTS ===')
+print(r[['Abbreviation', 'final_position', 'position_change', 'performance_score']].head())
+"
+```
+
+---
 
 ## Performance
 
-### Benchmark (Corrida Completa)
+| Operação             | Tempo (com cache) | Dados         |
+|----------------------|-------------------|---------------|
+| Laps                 | ~2s               | 927 voltas    |
+| Telemetria (20 pilotos) | ~15s           | ~11MB         |
+| Race Control         | <1s               | ~50 eventos   |
+| Weather              | <1s               | ~100 registros|
+| Results              | <1s               | 20 pilotos    |
+| **TOTAL**            | **~20s**          | **~12MB**     |
 
-| Operação | Tempo | Dados |
-|----------|-------|-------|
-| Pré-processar voltas | ~2s | 927 voltas |
-| Pré-processar telemetria | ~15s | 20 pilotos |
-| Salvar em Parquet | <1s | - |
+---
 
-### Dicas de Otimização
+## Troubleshooting
 
-1. **Use filtros por piloto** quando possível
-2. **Reduza num_points** se não precisa de alta resolução
-3. **Processe em lote** múltiplas corridas
-4. **Use --save** apenas quando necessário
+### Erro: "Nenhum valor de distância válido"
+**Causa:** Telemetria sem coluna Distance
+**Solução:** Verificar extração, usar dados completos
+
+### Warning: "R² muito baixo"
+**Causa:** Condições instáveis (chuva, safety car)
+**Solução:** Normal, não é erro
+
+### Erro: "Coluna não encontrada"
+**Causa:** Dados usando nomes diferentes
+**Solução:** CLI detecta automaticamente
+
+---
 
 ## Próximos Passos
 
-Após pré-processar os dados:
+Após pré-processar:
+1. **Análise ML** - Ruptures (change point detection)
+2. **Clustering** - DBSCAN, K-Means (agrupar stints)
+3. **Anomaly Detection** - Isolation Forest
+4. **Visualização** - Gráficos com dados sincronizados
 
-1. **Análise ML**: Use dados limpos para treinar modelos
-2. **Detecção de eventos**: Aplique Ruptures nos dados sincronizados
-3. **Clustering**: Agrupe stints similares
-4. **Visualização**: Crie gráficos com dados sincronizados
+---
 
 ## Referências
 
-- Documentação SciPy Interpolate: https://docs.scipy.org/doc/scipy/reference/interpolate.html
-- Documentação SciPy Signal: https://docs.scipy.org/doc/scipy/reference/signal.html
-- Documentação SciPy Stats: https://docs.scipy.org/doc/scipy/reference/stats.html
-- Código fonte: `src/preprocessing/`
-- Testes: `tests/preprocessing/`
-- Exemplos: `examples/preprocessing_example.py`
-
-## Suporte
-
-Para problemas ou dúvidas:
-1. Verifique os logs de erro
-2. Consulte os exemplos em `examples/preprocessing_example.py`
-3. Execute os testes: `uv run pytest tests/preprocessing/ -v`
-4. Reporte issues no repositório
+- **SciPy Interpolate:** https://docs.scipy.org/doc/scipy/reference/interpolate.html
+- **SciPy Signal:** https://docs.scipy.org/doc/scipy/reference/signal.html
+- **SciPy Stats:** https://docs.scipy.org/doc/scipy/reference/stats.html
+- **Código:** `src/preprocessing/`
+- **Testes:** `tests/preprocessing/`

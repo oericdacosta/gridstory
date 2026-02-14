@@ -1,16 +1,20 @@
 # PitWall AI
 
-Plataforma de análise inteligente de corridas de Fórmula 1 usando extração de dados, machine learning e LLM.
+**Pipeline completo de análise de corridas de Fórmula 1 usando FastF1, NumPy, Pandas e SciPy.**
 
 ## Sobre o Projeto
 
-PitWall AI é uma plataforma completa para análise de corridas de Fórmula 1 que combina:
-- Extração de dados detalhados usando FastF1
-- Detecção de eventos usando Machine Learning
-- Geração de relatórios narrativos usando LLM
-- API interativa para consultas sobre corridas
+PitWall AI é um pipeline de engenharia de dados para análise de corridas de Fórmula 1 que:
 
-O projeto está sendo desenvolvido em fases modulares, com a fase de extração de dados já implementada.
+1. **Extrai TODOS os dados** de uma corrida usando FastF1
+2. **Pré-processa TUDO** com NumPy, Pandas e SciPy
+3. **Prepara dados estruturados** prontos para análise ML
+
+**Pipeline atual (implementado):**
+- ✅ Extração completa de dados (laps, telemetry, race_control, weather, results)
+- ✅ Pré-processamento com SciPy (interpolação, signal processing, features estatísticas)
+- 🚧 Pipeline ML (próxima fase: Ruptures, Scikit-learn, Pydantic)
+- 🚧 Geração de narrativas com LLM (fase futura: DSPY, Agno, FastAPI)
 
 ## Status do Desenvolvimento
 
@@ -44,39 +48,39 @@ uv sync
 
 ## Uso Rápido
 
-### 1. Extrair Dados de uma Corrida
+### Pipeline Completo (Extração + Pré-processamento)
 
 ```bash
-# Extrair primeira corrida de 2025 com telemetria
-uv run python cli/extract.py --race 2025 1 --telemetry
+# Um único comando que faz TUDO
+uv run python cli/pipeline.py 2025 1
 
-# Extrair calendário completo
-uv run python cli/extract.py --calendar 2025
+# Com polling (aguardar disponibilidade dos dados)
+uv run python cli/pipeline.py 2025 1 --polling
 
-# Extrair múltiplas corridas
-uv run python cli/extract.py --batch 2025 "1,2,3,4,5" --telemetry
+# Mostrar amostras dos dados processados
+uv run python cli/pipeline.py 2025 1 --show-sample
 ```
 
-### 2. Pré-processar Dados
+**O que este comando faz:**
+1. ✅ Extrai TODOS os dados da corrida (laps, telemetry, race_control, weather, results)
+2. ✅ Pré-processa TODOS os dados (features, normalização, limpeza)
+3. ✅ Salva dados brutos em `data/raw/races/YEAR/round_XX/`
+4. ✅ Salva dados processados em `data/processed/races/YEAR/round_XX/`
+
+### Comandos Individuais (Opcional)
 
 ```bash
-# Listar dados disponíveis
-uv run python cli/list_data.py
+# Apenas extração (SEMPRE extrai todos os dados)
+uv run python cli/extract.py 2025 1
 
-# Pré-processar voltas (features estatísticas)
-uv run python cli/preprocess.py --year 2025 --round 1 --laps --save
-
-# Pré-processar telemetria (sincronização, limpeza)
-uv run python cli/preprocess.py --year 2025 --round 1 --telemetry --save
-
-# Ver amostra dos dados em tabela
-uv run python cli/preprocess.py --year 2025 --round 1 --laps --show-sample
+# Apenas pré-processamento (de dados já extraídos)
+uv run python cli/preprocess.py --year 2025 --round 1 --all --save
 ```
 
 ### Documentação Completa
 
 - [USAGE.md](USAGE.md) - Guia de extração de dados
-- [PREPROCESSING.md](PREPROCESSING.md) - Guia de pré-processamento (SciPy)
+- [PREPROCESSING.md](PREPROCESSING.md) - Guia completo de pré-processamento (todos os dados)
 - [src/extraction/README.md](src/extraction/README.md) - Documentação do módulo de extração
 - [src/preprocessing/README.md](src/preprocessing/README.md) - Documentação do módulo de pré-processamento
 - [cli/README.md](cli/README.md) - Documentação dos CLIs
@@ -105,60 +109,94 @@ pitwall-ai/
 
 ## Funcionalidades
 
-### 1. Extração de Dados (✅ Implementado)
+### 1. Extração Completa de Dados (✅ Implementado)
 
-A ferramenta extrai dados completos de corridas:
+**SEMPRE extrai TODOS os dados de uma corrida:**
 
-- **Voltas**: Tempos por setor, pit stops, compostos de pneu, desgaste
-- **Telemetria**: Velocidade, RPM, aceleração, freio, DRS, marchas
-- **Controle de Corrida**: Safety Car, bandeiras, penalidades
-- **Clima**: Temperatura, chuva, vento, pressão
-- **Resultados**: Classificação final, pontos, status
+- **Laps**: Tempos por setor, pit stops, compostos de pneu, desgaste de pneu
+- **Telemetria**: Velocidade, RPM, aceleração, freio, DRS, marchas (TODOS os pilotos)
+- **Race Control**: Safety Car, bandeiras, penalidades, investigações
+- **Weather**: Temperatura do ar/pista, chuva, vento, pressão, umidade
+- **Results**: Classificação final, grid de largada, pontos, status
 
-Os dados são salvos em formato Parquet para eficiência e organizados por temporada e rodada.
+**Formato:** Parquet (eficiente e compacto)
+**Organização:** `data/raw/races/YEAR/round_XX/`
 
-### 2. Pré-processamento com SciPy (✅ Implementado)
+### 2. Pré-processamento Completo (✅ Implementado)
 
-Motor matemático que transforma dados brutos em features prontas para ML:
+**Transforma TODOS os dados brutos em features prontas para análise:**
 
-- **Sincronização de Telemetria** (`scipy.interpolate`): Alinha dados de diferentes pilotos em grid comum de distância para comparações diretas
-- **Processamento de Sinal** (`scipy.signal`): Remove ruído de sensores, calcula derivadas (aceleração), preserva informação importante
-- **Features Estatísticas** (`scipy.stats`): Detecta outliers com Z-score, calcula taxa de degradação de pneus, estatísticas descritivas
+#### **A. Laps (Voltas e Estratégia)**
+- Features estatísticas (Z-score, outliers)
+- Taxa de degradação de pneus (regressão linear)
+- Estatísticas descritivas por grupo (piloto, composto)
 
-**Exemplos**:
-```python
-# Sincronizar telemetria de dois pilotos para comparação
-from src.preprocessing.interpolation import synchronize_telemetry
-ver_sync = synchronize_telemetry(ver_telemetry, track_length=5281.0)
-ham_sync = synchronize_telemetry(ham_telemetry, track_length=5281.0)
-speed_delta = ver_sync['Speed'] - ham_sync['Speed']
+#### **B. Telemetria (Dados do Carro)**
+- Sincronização em grid comum (`scipy.interpolate`)
+- Remoção de ruído (`scipy.signal`)
+- Cálculo de derivadas (aceleração, jerk)
+- Detecção e correção de outliers
 
-# Limpar ruído e calcular aceleração
-from src.preprocessing.signal_processing import apply_telemetry_pipeline
-processed = apply_telemetry_pipeline(telemetry, calculate_derivatives=True)
+#### **C. Race Control (Eventos da Corrida)**
+- Normalização de timestamps
+- Indicadores binários (safety car, bandeiras, penalidades)
+- Categorização de eventos
+- Severidade do evento (info/warning/critical)
 
-# Detectar outliers e calcular degradação de pneus
-from src.preprocessing.feature_engineering import enrich_dataframe_with_stats
-enriched = enrich_dataframe_with_stats(laps_df, group_by=['Driver', 'Stint'])
-```
+#### **D. Weather (Condições Meteorológicas)**
+- Interpolação de valores faltantes
+- Normalização de temperaturas
+- Tendências climáticas (temperatura subindo/descendo)
+- Detecção de mudanças bruscas
 
-Veja [src/preprocessing/README.md](src/preprocessing/README.md) para documentação completa.
+#### **E. Results (Classificação Final)**
+- Mudança de posições (grid → final)
+- Status de finalização (finished/DNF)
+- Categorização de DNF (collision/mechanical/electrical)
+- Score de desempenho relativo
+
+**Formato:** Parquet processado
+**Organização:** `data/processed/races/YEAR/round_XX/`
 
 ## Arquitetura
 
-O projeto segue uma arquitetura modular com separação clara de responsabilidades:
+O projeto é um **pipeline de engenharia de dados** com fases bem definidas:
 
-**Módulo 1: The Engine (Dados & ML)**
-- Extração de dados brutos (FastF1)
-- Detecção de eventos (Ruptures, Scikit-learn)
-- Validação e estruturação (Pydantic)
+### **FASE 1: Extração (✅ Implementado)**
+```
+FastF1 API → Extração Completa → Parquet (data/raw/)
+```
+- Laps, Telemetry, Race Control, Weather, Results
+- Cache local do FastF1 para eficiência
+- Organização hierárquica por temporada/rodada
 
-**Módulo 2: The Application (API & LLM)**
-- Servidor REST (FastAPI)
-- Geração de relatórios (DSPY)
-- Chat interativo (Agno)
+### **FASE 2: Pré-processamento (✅ Implementado)**
+```
+Dados Brutos → NumPy/Pandas/SciPy → Parquet (data/processed/)
+```
+- **Laps:** Features estatísticas, degradação de pneus
+- **Telemetria:** Sincronização, limpeza, derivadas
+- **Race Control:** Eventos estruturados, severidade
+- **Weather:** Tendências, mudanças bruscas
+- **Results:** Desempenho relativo, classificação
 
-Para detalhes completos, veja [ARCHITECTURE.md](ARCHITECTURE.md) e [docs/architecture.md](docs/architecture.md).
+### **FASE 3: Machine Learning (🚧 Planejado)**
+```
+Dados Processados → Ruptures/Scikit-learn → Eventos (JSON)
+```
+- Ruptures: Change Point Detection (degradação de pneus)
+- Isolation Forest: Detecção de anomalias
+- DBSCAN/K-Means: Agrupamento de stints
+- Pydantic: Validação e estruturação de eventos
+
+### **FASE 4: LLM & API (🚧 Planejado)**
+```
+Eventos (JSON) → DSPY/Agno → Narrativas & Chat
+```
+- DSPY: Geração de relatórios narrativos
+- Agno: Chatbot interativo com contexto
+- FastAPI: API REST para consultas
+- MLflow: Observabilidade e tracing
 
 ## Stack Tecnológica
 
@@ -177,7 +215,7 @@ Para detalhes completos, veja [ARCHITECTURE.md](ARCHITECTURE.md) e [docs/archite
 
 ### Guias de Uso
 - [USAGE.md](USAGE.md) - Guia de extração de dados
-- [PREPROCESSING.md](PREPROCESSING.md) - Guia de pré-processamento com SciPy
+- [PREPROCESSING.md](PREPROCESSING.md) - Guia completo de pré-processamento
 - [ARCHITECTURE.md](ARCHITECTURE.md) - Arquitetura do projeto
 
 ### Documentação dos Módulos
