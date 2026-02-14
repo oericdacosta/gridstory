@@ -1,32 +1,36 @@
-# PitWall AI
+# Módulo de Extração - PitWall AI
 
-**Ferramenta de extração e estruturação de dados de Fórmula 1** usando FastF1, Pandas e NumPy.
+**Extração completa e estruturada de dados de corridas de Fórmula 1.**
 
 ## Sobre
 
-PitWall AI é uma ferramenta Python para extrair, processar e estruturar dados de corridas de Fórmula 1. Utiliza a biblioteca FastF1 para acessar dados oficiais de telemetria, cronometragem, estratégia e condições meteorológicas de corridas da F1.
+Este módulo extrai TODOS os dados de uma corrida de F1 usando a biblioteca FastF1.
 
-### Funcionalidades Implementadas
+**IMPORTANTE:** A extração é SEMPRE completa - não há opções para extrair parcialmente. Todos os 5 tipos de dados são extraídos:
 
-**Extração Completa de Dados de Corrida:**
-- Dados de voltas e estratégia (tempos, pneus, pit stops, stints)
-- Telemetria completa por piloto (velocidade, RPM, aceleração, freio, DRS, marchas)
-- Mensagens de controle de corrida (Safety Car, bandeiras, penalidades)
-- Dados meteorológicos (temperatura do ar/pista, chuva, vento)
-- Resultados finais da corrida
+1. ✅ **Laps** - Voltas e estratégia
+2. ✅ **Telemetria** - Todos os pilotos
+3. ✅ **Race Control** - Safety car, bandeiras, penalidades
+4. ✅ **Weather** - Condições meteorológicas
+5. ✅ **Results** - Classificação final
 
-**Sistema de Polling:**
+## Funcionalidades
+
+### Extração Completa
+- Sempre extrai todos os 5 tipos de dados
+- Telemetria de todos os pilotos (não é opcional)
+- Dados salvos em formato Parquet
+- Cache local do FastF1 para eficiência
+
+### Sistema de Polling
 - Aguarda disponibilidade de dados para corridas recentes
 - Extração automática assim que os dados são publicados
+- Útil para corridas ao vivo ou recém-finalizadas
 
-**Organização Inteligente:**
-- Dados salvos em formato Parquet (eficiente e compacto)
-- Estrutura hierárquica por temporada e rodada
-- Telemetria organizada por abreviação do piloto (VER, HAM, LEC, etc.)
-
-**Gerenciamento de Calendário:**
-- Extração do calendário completo da temporada
-- Identificação automática da próxima corrida
+### Organização
+- Estrutura hierárquica: `data/raw/races/YEAR/round_XX/`
+- Telemetria organizada por piloto: `telemetry/VER.parquet`, `telemetry/HAM.parquet`, etc.
+- Metadata em JSON para cada corrida
 
 ## Instalação
 
@@ -48,37 +52,22 @@ uv sync
 
 ## Uso
 
-### Comandos Principais
-
-#### 1. Extrair Calendário da Temporada
+### Comando Básico
 
 ```bash
-uv run python cli/extract.py --calendar 2025
+# Extrair TODOS os dados de uma corrida
+uv run python cli/extract.py 2025 1
+
+# Com polling (corridas recentes)
+uv run python cli/extract.py 2025 1 --polling
 ```
 
-#### 2. Extrair Dados de uma Corrida
-
-```bash
-# Sem telemetria (rápido)
-uv run python cli/extract.py --race 2025 1
-
-# Com telemetria completa
-uv run python cli/extract.py --race 2025 1 --telemetry
-```
-
-#### 3. Extrair Múltiplas Corridas
-
-```bash
-# Primeiras 5 corridas
-uv run python cli/extract.py --batch 2025 "1,2,3,4,5" --telemetry
-```
-
-#### 4. Modo Polling (Corridas Recentes)
-
-```bash
-# Aguarda disponibilidade dos dados
-uv run python cli/extract.py --race 2025 10 --polling --telemetry
-```
+**O que é extraído (SEMPRE):**
+- ✅ Laps (voltas e estratégia)
+- ✅ Telemetria (todos os pilotos)
+- ✅ Race Control (eventos da corrida)
+- ✅ Weather (condições meteorológicas)
+- ✅ Results (classificação final)
 
 ### Uso Programático
 

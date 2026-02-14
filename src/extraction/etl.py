@@ -295,15 +295,20 @@ class RaceDataETL:
         print(f"  ✓ {len(results_clean)} resultados extraídos")
         return results_clean
 
-    def extract_all(self, save_telemetry: bool = False) -> Dict:
+    def extract_all(self) -> Dict:
         """
-        Extrai todos os dados de uma vez.
+        Extrai TODOS os dados de uma vez.
 
-        Args:
-            save_telemetry: Se True, extrai telemetria de todos os pilotos
+        SEMPRE extrai dados completos incluindo telemetria de todos os pilotos.
 
         Returns:
-            Dicionário com todos os dados extraídos
+            Dicionário com todos os dados extraídos:
+            - event_info: Metadados do evento
+            - laps: Dados de voltas e estratégia
+            - telemetry: Telemetria completa de todos os pilotos
+            - race_control: Mensagens de controle de corrida
+            - weather: Dados meteorológicos
+            - results: Resultados finais
         """
         print(f"\n{'=' * 60}")
         print(f"ETL COMPLETO: {self.event_name} ({self.year})")
@@ -318,13 +323,11 @@ class RaceDataETL:
                 "country": self.session.event["Country"],
             },
             "laps": self.extract_laps_data(),
+            "telemetry": self.extract_telemetry_data(),
             "race_control": self.extract_race_control_messages(),
             "weather": self.extract_weather_data(),
             "results": self.extract_results(),
         }
-
-        if save_telemetry:
-            data["telemetry"] = self.extract_telemetry_data()
 
         return data
 
