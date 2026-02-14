@@ -2,7 +2,7 @@
 
 ## Visão Geral
 
-PitWall AI é um pipeline completo para extração e pré-processamento de dados de corridas de Fórmula 1.
+PitWall AI é um pipeline completo para extração, pré-processamento e análise ML de dados de corridas de Fórmula 1.
 
 **Um único comando faz tudo:**
 ```bash
@@ -12,7 +12,8 @@ uv run python cli/pipeline.py 2025 1
 Este comando:
 1. ✅ Extrai TODOS os dados da corrida (laps, telemetry, race_control, weather, results)
 2. ✅ Pré-processa TODOS os dados com NumPy, Pandas e SciPy
-3. ✅ Salva dados brutos e processados organizados
+3. ✅ Executa Machine Learning com Scikit-learn (clustering + detecção de anomalias)
+4. ✅ Salva dados brutos, processados e resultados de ML organizados
 
 ## Instalação
 
@@ -55,6 +56,11 @@ uv run python cli/pipeline.py 2025 1 --show-sample
   - `race_control_processed.parquet`
   - `weather_processed.parquet`
   - `results_processed.parquet`
+
+- `data/ml/races/2025/round_01/` - Resultados de Machine Learning
+  - `laps_clustered.parquet` - Voltas com labels de cluster (ritmos identificados)
+  - `laps_anomalies.parquet` - Voltas com detecção de anomalias (eventos raros)
+  - `anomalies_summary.parquet` - Sumário de anomalias por piloto
 
 ## Comandos Individuais (Opcional)
 
@@ -392,4 +398,5 @@ Após extrair e pré-processar os dados, você pode:
 - [PREPROCESSING.md](PREPROCESSING.md) - Guia completo de pré-processamento (todos os 5 tipos de dados)
 - [src/extraction/README.md](src/extraction/README.md) - Módulo de extração
 - [src/preprocessing/README.md](src/preprocessing/README.md) - Módulo de pré-processamento
+- [src/ml/README.md](src/ml/README.md) - Módulo de Machine Learning (Scikit-learn)
 - [cli/README.md](cli/README.md) - Comandos CLI

@@ -13,7 +13,8 @@ PitWall AI é um pipeline de engenharia de dados para análise de corridas de F�
 **Pipeline atual (implementado):**
 - ✅ Extração completa de dados (laps, telemetry, race_control, weather, results)
 - ✅ Pré-processamento com SciPy (interpolação, signal processing, features estatísticas)
-- 🚧 Pipeline ML (próxima fase: Ruptures, Scikit-learn, Pydantic)
+- ✅ Machine Learning com Scikit-learn (clustering, anomaly detection, pipeline)
+- 🚧 Exportação estruturada (próxima fase: Pydantic)
 - 🚧 Geração de narrativas com LLM (fase futura: DSPY, Agno, FastAPI)
 
 ## Status do Desenvolvimento
@@ -21,8 +22,8 @@ PitWall AI é um pipeline de engenharia de dados para análise de corridas de F�
 | Módulo | Status | Descrição |
 |--------|--------|-----------|
 | Extração de Dados | ✅ Implementado | FastF1, Pandas, NumPy |
-| Pré-processamento | ✅ Implementado | SciPy (interpolação, signal processing, features) |
-| Pipeline ML | Planejado | Ruptures, Scikit-learn |
+| Pré-processamento | ✅ Implementado | SciPy (interpolação, signal processing, features) + Scikit-learn (imputação, encoding, escalonamento) |
+| Machine Learning | ✅ Implementado | Scikit-learn (K-Means, DBSCAN, Isolation Forest, Pipeline) |
 | Validação | Planejado | Pydantic |
 | API | Planejado | FastAPI |
 | LLM | Planejado | DSPY, Agno |
@@ -64,8 +65,10 @@ uv run python cli/pipeline.py 2025 1 --show-sample
 **O que este comando faz:**
 1. ✅ Extrai TODOS os dados da corrida (laps, telemetry, race_control, weather, results)
 2. ✅ Pré-processa TODOS os dados (features, normalização, limpeza)
-3. ✅ Salva dados brutos em `data/raw/races/YEAR/round_XX/`
-4. ✅ Salva dados processados em `data/processed/races/YEAR/round_XX/`
+3. ✅ Executa ML (clustering K-Means, detecção de anomalias Isolation Forest)
+4. ✅ Salva dados brutos em `data/raw/races/YEAR/round_XX/`
+5. ✅ Salva dados processados em `data/processed/races/YEAR/round_XX/`
+6. ✅ Salva resultados de ML em `data/ml/races/YEAR/round_XX/`
 
 ### Comandos Individuais (Opcional)
 
@@ -79,10 +82,11 @@ uv run python cli/preprocess.py --year 2025 --round 1 --all --save
 
 ### Documentação Completa
 
-- [USAGE.md](USAGE.md) - Guia de extração de dados
+- [USAGE.md](USAGE.md) - Guia de uso do pipeline completo
 - [PREPROCESSING.md](PREPROCESSING.md) - Guia completo de pré-processamento (todos os dados)
 - [src/extraction/README.md](src/extraction/README.md) - Documentação do módulo de extração
 - [src/preprocessing/README.md](src/preprocessing/README.md) - Documentação do módulo de pré-processamento
+- [src/ml/README.md](src/ml/README.md) - Documentação do módulo de Machine Learning (Scikit-learn)
 - [cli/README.md](cli/README.md) - Documentação dos CLIs
 
 ## Estrutura do Projeto
@@ -92,8 +96,8 @@ pitwall-ai/
 ├── cli/                    # Scripts de linha de comando
 ├── src/                    # Código-fonte
 │   ├── extraction/         # Extração de dados (✅ implementado)
-│   ├── preprocessing/      # Pré-processamento SciPy (✅ implementado)
-│   ├── ml/                 # Pipeline ML (planejado)
+│   ├── preprocessing/      # Pré-processamento SciPy + Scikit-learn (✅ implementado)
+│   ├── ml/                 # Machine Learning Scikit-learn (✅ implementado)
 │   ├── models/             # Modelos Pydantic (planejado)
 │   ├── api/                # FastAPI (planejado)
 │   ├── llm/                # Integração LLM (planejado)
@@ -101,10 +105,38 @@ pitwall-ai/
 ├── tests/                  # Testes automatizados
 ├── examples/               # Exemplos de uso
 ├── data/                   # Dados (não versionado)
+│   ├── raw/races/          # Dados brutos extraídos
+│   ├── processed/races/    # Dados pré-processados
+│   └── ml/races/           # Resultados de Machine Learning
 ├── docs/                   # Documentação
 ├── notebooks/              # Jupyter notebooks
 ├── config.yaml             # Configuração centralizada
 └── main.py                 # Entry point (futuro: servidor API)
+```
+
+### Estrutura de Dados Gerada
+
+```
+data/
+├── raw/races/YEAR/round_XX/              # FASE 1: Extração
+│   ├── laps.parquet
+│   ├── telemetry/*.parquet
+│   ├── race_control.parquet
+│   ├── weather.parquet
+│   ├── results.parquet
+│   └── metadata.json
+│
+├── processed/races/YEAR/round_XX/        # FASE 2: Pré-processamento
+│   ├── laps_processed.parquet
+│   ├── telemetry/*_processed.parquet
+│   ├── race_control_processed.parquet
+│   ├── weather_processed.parquet
+│   └── results_processed.parquet
+│
+└── ml/races/YEAR/round_XX/               # FASE 3: Machine Learning
+    ├── laps_clustered.parquet            # Clustering (ritmos)
+    ├── laps_anomalies.parquet            # Detecção de anomalias
+    └── anomalies_summary.parquet         # Sumário por piloto
 ```
 
 ## Funcionalidades
@@ -155,8 +187,37 @@ pitwall-ai/
 - Categorização de DNF (collision/mechanical/electrical)
 - Score de desempenho relativo
 
+#### **F. Pré-processamento para Scikit-learn**
+- **Imputação**: Preenche valores faltantes (SimpleImputer, KNNImputer)
+- **Encoding**: Converte categorias em números (OneHotEncoder para Compound, TrackStatus)
+- **Escalonamento**: Normaliza features (StandardScaler, RobustScaler)
+
+**Por quê:** Algoritmos de ML baseados em distância (K-Means, DBSCAN, Isolation Forest) requerem dados completos, numéricos e na mesma escala.
+
 **Formato:** Parquet processado
 **Organização:** `data/processed/races/YEAR/round_XX/`
+
+### 3. Machine Learning com Scikit-learn (✅ Implementado)
+
+**Análise não supervisionada para identificar padrões e eventos:**
+
+#### **A. Clusterização (Análise de Ritmo)**
+- **K-Means**: Agrupa voltas em ritmos (Puro, Gestão de Pneus, Tráfego)
+- **DBSCAN**: Identifica ritmo consistente e detecta ruído automaticamente
+- **Aplicações**: Identificar mudanças de estratégia, filtrar tráfego
+
+#### **B. Detecção de Anomalias**
+- **Isolation Forest**: Detecta eventos raros e outliers
+- **Aplicações**: Erros de piloto, quebras mecânicas, voltas excepcionais
+- **Saída**: Flags binários + scores de anomalia
+
+#### **C. Pipeline Integrado**
+- **ColumnTransformer**: Pré-processamento em um objeto único
+- **Pipeline Scikit-learn**: Encapsula pré-proc + ML
+- **run_race_analysis()**: Função de alto nível para análise completa
+
+**Formato:** DataFrames com labels e scores
+**Documentação:** [src/ml/README.md](src/ml/README.md)
 
 ## Arquitetura
 
@@ -172,24 +233,33 @@ FastF1 API → Extração Completa → Parquet (data/raw/)
 
 ### **FASE 2: Pré-processamento (✅ Implementado)**
 ```
-Dados Brutos → NumPy/Pandas/SciPy → Parquet (data/processed/)
+Dados Brutos → NumPy/Pandas/SciPy/Scikit-learn → Parquet (data/processed/)
 ```
 - **Laps:** Features estatísticas, degradação de pneus
 - **Telemetria:** Sincronização, limpeza, derivadas
 - **Race Control:** Eventos estruturados, severidade
 - **Weather:** Tendências, mudanças bruscas
 - **Results:** Desempenho relativo, classificação
+- **Para ML:** Imputação, Encoding, Escalonamento
 
-### **FASE 3: Machine Learning (🚧 Planejado)**
+### **FASE 3: Machine Learning (✅ Implementado)**
 ```
-Dados Processados → Ruptures/Scikit-learn → Eventos (JSON)
+Dados Processados → Scikit-learn → DataFrames com Labels/Scores
 ```
-- Ruptures: Change Point Detection (degradação de pneus)
-- Isolation Forest: Detecção de anomalias
-- DBSCAN/K-Means: Agrupamento de stints
+- **K-Means**: Agrupamento de voltas por ritmo
+- **DBSCAN**: Detecção de clusters + ruído
+- **Isolation Forest**: Detecção de anomalias (eventos raros)
+- **Pipeline**: Integração pré-processamento + ML
+
+### **FASE 4: Exportação Estruturada (🚧 Próxima Fase)**
+```
+DataFrames → Pydantic → JSON Estruturado
+```
 - Pydantic: Validação e estruturação de eventos
+- Schema de eventos (clusters, anomalias, mudanças de ritmo)
+- Exportação para consumo downstream
 
-### **FASE 4: LLM & API (🚧 Planejado)**
+### **FASE 5: LLM & API (🚧 Planejado)**
 ```
 Eventos (JSON) → DSPY/Agno → Narrativas & Chat
 ```
@@ -200,31 +270,38 @@ Eventos (JSON) → DSPY/Agno → Narrativas & Chat
 
 ## Stack Tecnológica
 
-| Camada | Tecnologia | Status |
-|--------|-----------|--------|
-| Extração | FastF1, Pandas, NumPy | ✅ Implementado |
-| Armazenamento | Parquet (PyArrow) | ✅ Implementado |
-| Pré-processamento | SciPy (interpolate, signal, stats) | ✅ Implementado |
-| ML | Ruptures, Scikit-learn | Planejado |
-| Validação | Pydantic | Planejado |
-| API | FastAPI | Planejado |
-| LLM | DSPY, Agno | Planejado |
-| Observabilidade | MLflow | Planejado |
+| Camada | Tecnologia | Status | Documentação |
+|--------|-----------|--------|--------------|
+| Extração | FastF1, Pandas, NumPy | ✅ Implementado | [src/extraction/](src/extraction/README.md) |
+| Armazenamento | Parquet (PyArrow) | ✅ Implementado | - |
+| Pré-processamento | SciPy (interpolate, signal, stats) | ✅ Implementado | [src/preprocessing/](src/preprocessing/README.md) |
+| Pré-proc ML | Scikit-learn (imputers, encoders, scalers) | ✅ Implementado | [PREPROCESSING.md](PREPROCESSING.md) |
+| Machine Learning | Scikit-learn (KMeans, DBSCAN, IsolationForest) | ✅ Implementado | [src/ml/](src/ml/README.md) |
+| Change Point Detection | Ruptures | 🚧 Próxima Fase | - |
+| Validação | Pydantic | 🚧 Próxima Fase | - |
+| Observabilidade ML | MLflow | 🚧 Próxima Fase | - |
+| API | FastAPI | 📅 Planejado | - |
+| LLM | DSPY, Agno | 📅 Planejado | - |
+
+### Legenda
+- ✅ Implementado e documentado
+- 🚧 Próxima fase (segundo planejamento)
+- 📅 Planejado (Módulo 2)
 
 ## Documentação
 
 ### Guias de Uso
-- [USAGE.md](USAGE.md) - Guia de extração de dados
-- [PREPROCESSING.md](PREPROCESSING.md) - Guia completo de pré-processamento
-- [ARCHITECTURE.md](ARCHITECTURE.md) - Arquitetura do projeto
+- [USAGE.md](USAGE.md) - Guia de uso do pipeline completo
+- [PREPROCESSING.md](PREPROCESSING.md) - Guia completo de pré-processamento (todos os 5 tipos de dados + Scikit-learn)
 
 ### Documentação dos Módulos
 - [src/extraction/README.md](src/extraction/README.md) - Módulo de extração
 - [src/preprocessing/README.md](src/preprocessing/README.md) - Módulo de pré-processamento
+- [src/ml/README.md](src/ml/README.md) - Módulo de Machine Learning (Clustering + Anomaly Detection)
 - [cli/README.md](cli/README.md) - Ferramentas CLI
 
 ### Documentação Técnica
-- [docs/](docs/) - Documentação detalhada (arquitetura, API, ML pipeline)
+- [docs/](docs/) - Documentação detalhada (arquitetura, API)
 
 ## Testes
 
