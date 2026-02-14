@@ -700,13 +700,328 @@ print(r[['Abbreviation', 'final_position', 'position_change', 'performance_score
 
 ---
 
+## 6. Pré-processamento para SCIKIT-LEARN
+
+### Visão Geral
+
+Algoritmos de ML do Scikit-learn (K-Means, DBSCAN, Isolation Forest) são baseados em **distância**.
+Três etapas de pré-processamento são **obrigatórias** antes de alimentar esses algoritmos:
+
+1. **Imputação** - Preencher valores faltantes (NaN)
+2. **Encoding** - Converter categorias em números
+3. **Escalonamento** - Colocar todas as variáveis na mesma escala
+
+**Por quê essas etapas são críticas?**
+
+Se você misturar "Tempo de Volta" (ex: 90 segundos) com "Idade do Pneu" (ex: 5 voltas), a variável de maior magnitude dominará o cálculo de distância se não houver escalonamento.
+
+**Localização:** `src/preprocessing/feature_engineering.py`
+
+---
+
+### 6.1. Imputação de Valores Faltantes
+
+**Função:** `impute_missing_values()`
+
+#### O Problema
+
+Algoritmos de ML não aceitam valores NaN. Pequenas falhas na telemetria ou dados faltantes causam erros.
+
+#### Soluções Disponíveis
+
+##### A. SimpleImputer (Rápido)
+```python
+from src.preprocessing.feature_engineering import impute_missing_values
+
+laps_imputed = impute_missing_values(
+    laps_df,
+    numeric_columns=['LapTime_seconds', 'Sector1Time_seconds'],
+    strategy='median',  # ou 'mean', 'most_frequent'
+    use_knn=False
+)
+```
+
+**Estratégias:**
+- `mean`: Média dos valores válidos
+- `median`: Mediana (mais resistente a outliers)
+- `most_frequent`: Valor mais comum
+
+**Quando usar:** Poucos valores faltantes (<5%), dados simples
+
+##### B. KNNImputer (Sofisticado)
+```python
+laps_imputed = impute_missing_values(
+    laps_df,
+    numeric_columns=['LapTime_seconds', 'Sector1Time_seconds'],
+    use_knn=True,
+    n_neighbors=5
+)
+```
+
+**Como funciona:** Usa os 5 vizinhos mais próximos para estimar o valor faltante
+
+**Quando usar:** Telemetria, muitos valores faltantes, padrões complexos
+
+#### Por Quê
+
+- **SimpleImputer:** Rápido, assume independência entre variáveis
+- **KNNImputer:** Mais preciso, considera padrões e correlações nos dados
+
+#### Exemplo Completo
+
+```python
+import pandas as pd
+from src.preprocessing.feature_engineering import impute_missing_values
+
+# Carregar dados
+laps = pd.read_parquet('data/raw/races/2025/round_01/laps.parquet')
+
+# Verificar valores faltantes
+print(laps.isnull().sum())
+
+# Imputar
+laps_clean = impute_missing_values(
+    laps,
+    numeric_columns=['LapTime_seconds', 'Sector1Time_seconds', 'TyreLife'],
+    strategy='median'
+)
+
+# Verificar
+print(laps_clean.isnull().sum())  # Deve ser 0
+```
+
+---
+
+### 6.2. Encoding de Variáveis Categóricas
+
+**Função:** `encode_categorical_variables()`
+
+#### O Problema
+
+Variáveis como **Composto do Pneu** (Soft, Medium, Hard, Inter) são qualitativas.
+Algoritmos baseados em distância não entendem que "SOFT" ≠ "HARD".
+
+#### Solução: OneHotEncoder
+
+Transforma categorias em colunas binárias:
+
+```python
+from src.preprocessing.feature_engineering import encode_categorical_variables
+
+laps_encoded = encode_categorical_variables(
+    laps_df,
+    categorical_columns=['Compound'],
+    drop_first=True  # Evita multicolinearidade
+)
+```
+
+**Antes:**
+```
+Compound
+--------
+SOFT
+SOFT
+MEDIUM
+HARD
+```
+
+**Depois:**
+```
+Compound_MEDIUM | Compound_HARD
+----------------|---------------
+0               | 0              (era SOFT)
+0               | 0              (era SOFT)
+1               | 0              (é MEDIUM)
+0               | 1              (é HARD)
+```
+
+#### Parâmetro `drop_first`
+
+- `drop_first=True`: Remove primeira categoria (evita redundância)
+- `drop_first=False`: Mantém todas (mais explícito)
+
+**Recomendação:** Use `True` para regressão, `False` para interpretabilidade
+
+#### Por Quê
+
+OneHotEncoding cria features binárias que representam "presença" de uma categoria.
+Algoritmos de distância podem então calcular:
+- Distância entre duas voltas com SOFT: pequena
+- Distância entre SOFT e HARD: grande
+
+#### Exemplo Completo
+
+```python
+import pandas as pd
+from src.preprocessing.feature_engineering import encode_categorical_variables
+
+laps = pd.read_parquet('data/raw/races/2025/round_01/laps.parquet')
+
+# Antes
+print(laps['Compound'].unique())  # ['SOFT', 'MEDIUM', 'HARD', 'INTERMEDIATE']
+
+# Encoding
+laps_encoded = encode_categorical_variables(
+    laps,
+    categorical_columns=['Compound', 'TrackStatus'],
+    drop_first=True
+)
+
+# Depois
+print(laps_encoded.columns)  # Compound_MEDIUM, Compound_HARD, Compound_INTERMEDIATE, ...
+```
+
+---
+
+### 6.3. Escalonamento de Features (CRÍTICO)
+
+**Função:** `scale_features()`
+
+#### O Problema
+
+Esta é a etapa **MAIS CRÍTICA** para algoritmos baseados em distância.
+
+**Exemplo do problema:**
+```
+LapTime_seconds: 90.5  (magnitude ~90)
+TyreLife:        5     (magnitude ~5)
+Speed:           287   (magnitude ~300)
+```
+
+Sem escalonamento, a distância é dominada por `Speed` (maior magnitude), ignorando `LapTime` e `TyreLife`.
+
+#### Solução: Escalonamento
+
+Coloca todas as variáveis na mesma escala (média=0, variância=1)
+
+##### A. StandardScaler (Padrão)
+```python
+from src.preprocessing.feature_engineering import scale_features
+
+laps_scaled = scale_features(
+    laps_df,
+    numeric_columns=['LapTime_seconds', 'TyreLife', 'Sector1Time_seconds'],
+    scaler_type='standard'
+)
+```
+
+**Como funciona:**
+```python
+X_scaled = (X - mean(X)) / std(X)
+```
+
+**Quando usar:** Distribuição aproximadamente normal, sem outliers extremos
+
+##### B. RobustScaler (Resistente a Outliers)
+```python
+laps_scaled = scale_features(
+    laps_df,
+    numeric_columns=['LapTime_seconds', 'TyreLife'],
+    scaler_type='robust'
+)
+```
+
+**Como funciona:** Usa quartis (mediana e IQR) em vez de média e desvio padrão
+
+**Quando usar:** Dados com outliers extremos (ex: rodadas, colisões que aumentam tempo em 30s)
+
+#### Por Quê
+
+Sem escalonamento:
+- K-Means agrupa baseado em magnitude, não em padrão
+- DBSCAN usa `eps` (distância) que não funciona para escalas diferentes
+- Isolation Forest se confunde com magnitudes diferentes
+
+Com escalonamento:
+- Todas as variáveis têm peso igual
+- Distâncias são comparáveis
+- Algoritmos funcionam corretamente
+
+#### Retornar o Scaler
+
+Para aplicar a mesma transformação em novos dados:
+
+```python
+laps_scaled, scaler = scale_features(
+    laps_df,
+    numeric_columns=['LapTime_seconds'],
+    scaler_type='robust',
+    return_scaler=True
+)
+
+# Mais tarde, em novos dados
+new_laps_scaled = scaler.transform(new_laps_df[['LapTime_seconds']])
+```
+
+#### Exemplo Completo
+
+```python
+import pandas as pd
+from src.preprocessing.feature_engineering import scale_features
+
+laps = pd.read_parquet('data/processed/races/2025/round_01/laps_processed.parquet')
+
+# Antes
+print(laps['LapTime_seconds'].describe())
+print(laps['TyreLife'].describe())
+
+# Escalonar
+laps_scaled = scale_features(
+    laps,
+    numeric_columns=['LapTime_seconds', 'TyreLife', 'Sector1Time_seconds'],
+    scaler_type='robust'  # Resistente a outliers
+)
+
+# Depois (média ~0, std ~1)
+print(laps_scaled['LapTime_seconds'].describe())
+print(laps_scaled['TyreLife'].describe())
+```
+
+---
+
+### Pipeline Completo de Pré-processamento para ML
+
+Exemplo combinando as 3 etapas:
+
+```python
+from src.preprocessing.feature_engineering import (
+    impute_missing_values,
+    encode_categorical_variables,
+    scale_features
+)
+
+# Etapa 1: Imputação
+laps_imputed = impute_missing_values(
+    laps_df,
+    numeric_columns=['LapTime_seconds', 'Sector1Time_seconds', 'TyreLife'],
+    strategy='median'
+)
+
+# Etapa 2: Encoding
+laps_encoded = encode_categorical_variables(
+    laps_imputed,
+    categorical_columns=['Compound'],
+    drop_first=True
+)
+
+# Etapa 3: Escalonamento
+laps_scaled = scale_features(
+    laps_encoded,
+    numeric_columns=['LapTime_seconds', 'Sector1Time_seconds', 'TyreLife'],
+    scaler_type='robust'
+)
+
+# Agora está pronto para K-Means, DBSCAN, Isolation Forest!
+```
+
+---
+
 ## Próximos Passos
 
 Após pré-processar:
-1. **Análise ML** - Ruptures (change point detection)
-2. **Clustering** - DBSCAN, K-Means (agrupar stints)
-3. **Anomaly Detection** - Isolation Forest
-4. **Visualização** - Gráficos com dados sincronizados
+1. **Clustering** - K-Means, DBSCAN (agrupar stints, identificar ritmos) → Ver [src/ml/README.md](src/ml/README.md)
+2. **Anomaly Detection** - Isolation Forest (detectar eventos raros) → Ver [src/ml/README.md](src/ml/README.md)
+3. **Visualização** - Gráficos com dados sincronizados
 
 ---
 
