@@ -1,21 +1,19 @@
 """
-Plataforma de Inteligência de Corridas F1 - CLI de Extração de Dados.
+PitWall AI - CLI de Extração de Dados F1.
 
-Este script fornece interface de linha de comando para extrair dados de
-corridas de Fórmula 1 usando a biblioteca FastF1.
+Extrai TODOS os dados de uma corrida de Fórmula 1:
+- Laps (voltas e estratégia)
+- Telemetria completa (todos os pilotos)
+- Race Control (safety car, bandeiras, penalidades)
+- Weather (condições meteorológicas)
+- Results (classificação final)
 
-Exemplos de uso:
-    # Extrair calendário da temporada
-    uv run python cli/extract.py --calendar 2025
+Exemplo de uso:
+    # Extrair corrida completa
+    uv run python cli/extract.py 2025 1
 
-    # Extrair uma corrida específica
-    uv run python cli/extract.py --race 2025 1
-
-    # Extrair com telemetria completa
-    uv run python cli/extract.py --race 2025 1 --telemetry
-
-    # Extrair múltiplas corridas
-    uv run python cli/extract.py --batch 2025 "1,2,3,4,5"
+    # Extrair com polling (aguardar disponibilidade)
+    uv run python cli/extract.py 2025 1 --polling
 """
 
 import argparse
@@ -25,54 +23,51 @@ from pathlib import Path
 # Adicionar diretório raiz ao path para imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from src.extraction.orchestrator import (
-    extract_race_complete,
-    extract_season_calendar,
-    extract_multiple_races,
-)
+from src.extraction.orchestrator import extract_race_complete
 
 
 def main():
     parser = argparse.ArgumentParser(
-        description="F1 Race Intelligence Platform - Extração de Dados",
+        description="PitWall AI - Extração Completa de Dados F1",
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog=__doc__,
+        epilog="""
+Exemplos:
+  # Extrair primeira corrida de 2025 (todos os dados)
+  uv run python cli/extract.py 2025 1
+
+  # Extrair com polling (aguardar disponibilidade dos dados)
+  uv run python cli/extract.py 2025 1 --polling
+
+  # Especificar diretório de saída
+  uv run python cli/extract.py 2025 1 --output-dir data/raw/races
+
+Dados extraídos (SEMPRE):
+  ✓ Laps (voltas e estratégia)
+  ✓ Telemetria (todos os pilotos)
+  ✓ Race Control (safety car, bandeiras)
+  ✓ Weather (condições meteorológicas)
+  ✓ Results (classificação final)
+        """,
     )
 
-    # Comandos principais
+    # Argumentos posicionais obrigatórios
     parser.add_argument(
-        "--calendar",
+        "year",
         type=int,
-        metavar="YEAR",
-        help="Extrair calendário da temporada (ex: --calendar 2025)",
+        help="Ano da temporada (ex: 2025)",
     )
 
     parser.add_argument(
-        "--race",
-        nargs=2,
+        "round",
         type=int,
-        metavar=("YEAR", "ROUND"),
-        help="Extrair dados de uma corrida (ex: --race 2025 1)",
+        help="Número da rodada/corrida (ex: 1 para primeira corrida)",
     )
 
-    parser.add_argument(
-        "--batch",
-        nargs=2,
-        metavar=("YEAR", "ROUNDS"),
-        help='Extrair múltiplas corridas (ex: --batch 2025 "1,2,3,4,5")',
-    )
-
-    # Opções adicionais
-    parser.add_argument(
-        "--telemetry",
-        action="store_true",
-        help="Incluir telemetria completa de todos os pilotos",
-    )
-
+    # Opções
     parser.add_argument(
         "--polling",
         action="store_true",
-        help="Usar modo polling (aguardar disponibilidade dos dados)",
+        help="Usar modo polling para aguardar disponibilidade dos dados",
     )
 
     parser.add_argument(
@@ -90,50 +85,21 @@ def main():
     cache_dir = Path.home() / ".cache" / "fastf1"
     cache_dir.mkdir(parents=True, exist_ok=True)
     fastf1.Cache.enable_cache(str(cache_dir))
-    print(f"Cache FastF1 habilitado: {cache_dir}\n")
+    print(f"📦 Cache FastF1: {cache_dir}\n")
 
-    # Executar comandos
-    if args.calendar:
-        extract_season_calendar(year=args.calendar)
-
-    elif args.race:
-        year, round_num = args.race
+    # Executar extração
+    try:
         extract_race_complete(
-            year=year,
-            round_number=round_num,
+            year=args.year,
+            round_number=args.round,
             use_polling=args.polling,
-            save_telemetry=args.telemetry,
             output_dir=args.output_dir,
         )
-
-    elif args.batch:
-        year = int(args.batch[0])
-        rounds_str = args.batch[1]
-        round_numbers = [int(r.strip()) for r in rounds_str.split(",")]
-
-        extract_multiple_races(
-            year=year,
-            round_numbers=round_numbers,
-            save_telemetry=args.telemetry,
-            output_dir=args.output_dir,
-        )
-
-    else:
-        parser.print_help()
-        print("\n" + "=" * 70)
-        print("EXEMPLOS DE USO:")
-        print("=" * 70)
-        print("\n1. Extrair calendário da temporada 2025:")
-        print("   python main.py --calendar 2025")
-        print("\n2. Extrair primeira corrida de 2025:")
-        print("   python main.py --race 2025 1")
-        print("\n3. Extrair com telemetria completa:")
-        print("   python main.py --race 2025 1 --telemetry")
-        print("\n4. Extrair primeiras 5 corridas:")
-        print("   python main.py --batch 2025 1,2,3,4,5")
-        print("\n5. Modo polling (aguardar dados):")
-        print("   python main.py --race 2026 1 --polling")
-        print("\n" + "=" * 70 + "\n")
+    except Exception as e:
+        print(f"\n❌ Erro durante extração: {e}")
+        import traceback
+        traceback.print_exc()
+        sys.exit(1)
 
 
 if __name__ == "__main__":
