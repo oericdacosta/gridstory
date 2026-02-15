@@ -10,6 +10,8 @@ O SciPy atua como **motor matemático de pré-processamento e engenharia de feat
 
 ## 📦 Componentes
 
+> **Nota sobre Configuração**: Todos os parâmetros (num_points, kernel_size, contamination, etc.) são centralizados em `config.yaml` na raiz do projeto. Você pode customizar os valores padrão editando este arquivo.
+
 ### 1. Sincronização de Telemetria (`interpolation.py`)
 
 **Problema**: Dados de telemetria chegam dessincronizados - diferentes pilotos têm medições em pontos diferentes da pista.
@@ -115,11 +117,15 @@ processed = apply_telemetry_pipeline(
 
 ---
 
-### 3. Engenharia de Features Estatísticas (`feature_engineering.py`)
+### 3. Engenharia de Features (`feature_engineering/`)
 
-**Problema**: Identificar outliers simples antes de usar IA complexa (ex: volta lenta por tráfego).
+**Problema**: Identificar outliers, preparar dados para ML e extrair features específicas de F1.
 
-**Solução**: Estatística clássica para filtrar o óbvio e criar features descritivas.
+**Solução**: Módulo organizado em 3 submódulos especializados por responsabilidade.
+
+#### 3.1 Features Estatísticas (`feature_engineering/statistical.py`)
+
+Análise estatística e degradação de pneus usando `scipy.stats`.
 
 **Ferramentas**:
 - `scipy.stats.zscore` - Normalização e detecção de outliers
@@ -128,28 +134,48 @@ processed = apply_telemetry_pipeline(
 
 **Funções**:
 ```python
-calculate_statistical_features(
-    df: pd.DataFrame,
-    value_column: str = 'LapTime',
-    group_by: list[str] | None = None,
-) -> pd.DataFrame
-
-calculate_degradation_rate(
-    df: pd.DataFrame,
-    lap_column: str = 'LapNumber',
-    time_column: str = 'LapTime',
-    group_by: list[str] | None = None,
-) -> pd.DataFrame
-
-enrich_dataframe_with_stats(
-    df: pd.DataFrame,
-    value_column: str = 'LapTime',
-    group_by: list[str] | None = None,
-    include_degradation: bool = True,
-) -> pd.DataFrame
+from src.preprocessing.feature_engineering.statistical import (
+    calculate_statistical_features,
+    calculate_degradation_rate,
+    calculate_descriptive_statistics,
+    enrich_dataframe_with_stats,
+)
 ```
 
-**Exemplo**:
+#### 3.2 Pré-processamento de Domínio F1 (`feature_engineering/domain.py`)
+
+Transformação de dados específicos de corrida (race control, clima, resultados).
+
+**Funções**:
+```python
+from src.preprocessing.feature_engineering.domain import (
+    preprocess_race_control,  # Safety car, bandeiras, penalidades
+    preprocess_weather,        # Temperatura, chuva, tendências
+    preprocess_results,        # Classificação, performance scores
+)
+```
+
+#### 3.3 Preparação para ML (`feature_engineering/ml_prep.py`)
+
+Imputação, encoding e escalonamento para Scikit-learn.
+
+**Funções**:
+```python
+from src.preprocessing.feature_engineering.ml_prep import (
+    impute_missing_values,        # SimpleImputer / KNNImputer
+    encode_categorical_variables, # OneHotEncoder
+    scale_features,               # StandardScaler / RobustScaler
+)
+```
+
+**Backward Compatibility**: Todas as funções também podem ser importadas do módulo principal:
+```python
+# Ambos funcionam:
+from src.preprocessing.feature_engineering import calculate_statistical_features
+from src.preprocessing.feature_engineering.statistical import calculate_statistical_features
+```
+
+**Exemplo - Features Estatísticas**:
 ```python
 from src.preprocessing.feature_engineering import enrich_dataframe_with_stats
 
@@ -174,11 +200,22 @@ enriched = enrich_dataframe_with_stats(
 
 # Filtrar outliers
 clean_laps = enriched[~enriched['is_outlier']]
+```
 
-# Analisar degradação
-for driver in enriched['Driver'].unique():
-    driver_data = enriched[enriched['Driver'] == driver].iloc[0]
-    print(f"{driver}: {driver_data['degradation_slope']:.3f}s/lap")
+**Exemplo - Pré-processamento para ML**:
+```python
+from src.preprocessing.feature_engineering import (
+    impute_missing_values,
+    encode_categorical_variables,
+    scale_features,
+)
+
+# Pipeline completo de preparação para ML
+laps_imputed = impute_missing_values(laps_df, strategy='median')
+laps_encoded = encode_categorical_variables(laps_imputed, categorical_columns=['Compound'])
+laps_scaled = scale_features(laps_encoded, scaler_type='robust')
+
+# Agora pronto para Scikit-learn (K-Means, Isolation Forest, etc.)
 ```
 
 **Resultado**:

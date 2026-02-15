@@ -18,6 +18,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from src.preprocessing.interpolation import synchronize_telemetry
 from src.preprocessing.signal_processing import apply_telemetry_pipeline
 from src.preprocessing.feature_engineering import enrich_dataframe_with_stats
+from src.utils.config import get_config
 
 
 def load_lap_data(year: int, round_num: int, session_type: str = "R") -> pd.DataFrame:
@@ -327,12 +328,13 @@ def preprocess_telemetry_signals(
         print("⚠️  Coluna 'Distance' não encontrada - pulando sincronização")
         return {}
 
-    # Sincronizar telemetria
-    print(f"\n🔄 Sincronizando telemetria (grid: 1000 pontos)")
+    # Sincronizar telemetria (num_points carregado de config.yaml)
+    config = get_config()
+    num_points = config.get_num_points()
+    print(f"\n🔄 Sincronizando telemetria (grid: {num_points} pontos)")
     synchronized = synchronize_telemetry(
         telemetry_df,
         track_length=track_length,
-        num_points=1000,
         telemetry_columns=available_cols
     )
 

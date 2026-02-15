@@ -12,6 +12,8 @@ data:
     base_dir: "data/timelines"
   models:
     base_dir: "data/models"
+  ml:
+    races_dir: "data/ml/races"
 
 # Cache do FastF1
 cache:
@@ -74,8 +76,37 @@ logging:
   level: "INFO"
   format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 
-# ML Pipeline (futuro)
+# Pré-processamento
+preprocessing:
+  # Interpolação de telemetria
+  interpolation:
+    num_points: 5000  # Número de pontos no grid sincronizado
+
+  # Processamento de sinal
+  signal_processing:
+    median_filter_kernel_size: 5
+    savgol_kernel_size: 11
+    savgol_polyorder: 3
+    outlier_threshold: 3.0  # Desvios padrão para detecção de outliers
+
+  # Imputação de valores ausentes
+  imputation:
+    strategy: "median"  # Opções: mean, median, mode, knn
+    use_knn: false
+
+  # Codificação de variáveis categóricas
+  encoding:
+    drop_first: true  # Evitar multicolinearidade em one-hot encoding
+
+  # Escalonamento de features
+  scaling:
+    type: "robust"  # Opções: standard, minmax, robust
+
+# ML Pipeline
 ml:
+  # Random state global para reprodutibilidade
+  random_state: 42
+
   # Ruptures - Detecção de degradação
   degradation:
     algorithm: "Pelt"
@@ -83,13 +114,25 @@ ml:
 
   # Isolation Forest - Anomalias
   anomaly:
-    contamination: 0.1
+    contamination: 0.05  # Padrão: 5% (RESOLVIDO: era 0.1 no config antigo, 0.05 no código)
     n_estimators: 100
+    # Perfis de contaminação por tipo de corrida
+    contamination_profiles:
+      clean: 0.03      # Corrida limpa, sem incidentes (3%)
+      normal: 0.05     # Corrida padrão (5%)
+      chaotic: 0.10    # Corrida com muitos safety cars/incidentes (10%)
 
   # Clustering
   clustering:
     algorithm: "KMeans"
     n_clusters: 3
+    k_range_min: 2      # Mínimo de clusters para análise
+    k_range_max: 6      # Máximo de clusters para análise
+
+  # DBSCAN
+  dbscan:
+    min_samples: 3
+    eps: 0.5
 
 # API (futuro)
 api:

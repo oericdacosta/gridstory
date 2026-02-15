@@ -84,6 +84,7 @@ uv run python cli/preprocess.py --year 2025 --round 1 --all --save
 
 - [USAGE.md](USAGE.md) - Guia de uso do pipeline completo
 - [PREPROCESSING.md](PREPROCESSING.md) - Guia completo de pré-processamento (todos os dados)
+- [docs/configuration.md](docs/configuration.md) - **Guia de configuração** (config.yaml)
 - [src/extraction/README.md](src/extraction/README.md) - Documentação do módulo de extração
 - [src/preprocessing/README.md](src/preprocessing/README.md) - Documentação do módulo de pré-processamento
 - [src/ml/README.md](src/ml/README.md) - Documentação do módulo de Machine Learning (Scikit-learn)
@@ -93,26 +94,49 @@ uv run python cli/preprocess.py --year 2025 --round 1 --all --save
 
 ```
 pitwall-ai/
-├── cli/                    # Scripts de linha de comando
-├── src/                    # Código-fonte
-│   ├── extraction/         # Extração de dados (✅ implementado)
-│   ├── preprocessing/      # Pré-processamento SciPy + Scikit-learn (✅ implementado)
-│   ├── ml/                 # Machine Learning Scikit-learn (✅ implementado)
-│   ├── models/             # Modelos Pydantic (planejado)
-│   ├── api/                # FastAPI (planejado)
-│   ├── llm/                # Integração LLM (planejado)
-│   └── utils/              # Utilitários
-├── tests/                  # Testes automatizados
-├── examples/               # Exemplos de uso
-├── data/                   # Dados (não versionado)
-│   ├── raw/races/          # Dados brutos extraídos
-│   ├── processed/races/    # Dados pré-processados
-│   └── ml/races/           # Resultados de Machine Learning
-├── docs/                   # Documentação
-├── notebooks/              # Jupyter notebooks
-├── config.yaml             # Configuração centralizada
-└── main.py                 # Entry point (futuro: servidor API)
+├── cli/                           # Scripts de linha de comando
+│   ├── pipeline.py                # Pipeline completo (orquestrador)
+│   ├── pipeline_steps/            # Módulos do pipeline
+│   │   ├── extraction.py          # Fase 1: Extração
+│   │   ├── preprocessing.py       # Fase 2: Pré-processamento
+│   │   ├── ml.py                  # Fase 3: Machine Learning
+│   │   └── reporting.py           # Formatação de saídas
+│   ├── extract.py                 # CLI de extração individual
+│   └── preprocess.py              # CLI de pré-processamento individual
+├── src/                           # Código-fonte
+│   ├── extraction/                # Extração de dados (✅ implementado)
+│   ├── preprocessing/             # Pré-processamento (✅ implementado)
+│   │   ├── interpolation.py       # Sincronização de telemetria
+│   │   ├── signal_processing.py   # Tratamento de sinal
+│   │   └── feature_engineering/   # Engenharia de features (modular)
+│   │       ├── statistical.py     # Features estatísticas
+│   │       ├── domain.py          # Pré-processamento F1
+│   │       └── ml_prep.py         # Preparação para ML
+│   ├── ml/                        # Machine Learning (✅ implementado)
+│   ├── models/                    # Modelos Pydantic (planejado)
+│   ├── api/                       # FastAPI (planejado)
+│   ├── llm/                       # Integração LLM (planejado)
+│   └── utils/                     # Utilitários e configuração
+├── tests/                         # Testes automatizados
+├── examples/                      # Exemplos de uso
+├── data/                          # Dados (não versionado)
+│   ├── raw/races/                 # Dados brutos extraídos
+│   ├── processed/races/           # Dados pré-processados
+│   └── ml/races/                  # Resultados de Machine Learning
+├── docs/                          # Documentação
+├── notebooks/                     # Jupyter notebooks
+├── config.yaml                    # ⚙️ Configuração centralizada
+└── main.py                        # Entry point (futuro: servidor API)
 ```
+
+### Configuração Centralizada
+
+Todos os parâmetros do pipeline estão centralizados em `config.yaml`:
+- **Pré-processamento**: num_points, kernel_size, thresholds, etc.
+- **Machine Learning**: random_state, contamination, k_range, etc.
+- **Diretórios**: Estrutura de dados configurável
+
+Edite `config.yaml` para customizar o comportamento do pipeline sem modificar código.
 
 ### Estrutura de Dados Gerada
 

@@ -6,7 +6,7 @@ Comandos de linha de comando para extração e pré-processamento de dados F1.
 
 ### 1. pipeline.py (Recomendado)
 
-**Pipeline completo end-to-end:** Extração + Pré-processamento em um único comando.
+**Pipeline completo end-to-end:** Extração + Pré-processamento + Machine Learning em um único comando.
 
 ```bash
 # Pipeline completo
@@ -20,10 +20,18 @@ uv run python cli/pipeline.py 2025 1 --show-sample
 ```
 
 **O que faz:**
-1. ✅ Extrai TODOS os dados (laps, telemetry, race_control, weather, results)
-2. ✅ Pré-processa TODOS os dados (features, normalização, limpeza)
-3. ✅ Salva dados brutos em `data/raw/races/YEAR/round_XX/`
-4. ✅ Salva dados processados em `data/processed/races/YEAR/round_XX/`
+1. ✅ **FASE 1 - Extração**: Coleta TODOS os dados da corrida (laps, telemetry, race_control, weather, results)
+2. ✅ **FASE 2 - Pré-processamento**: Processa TODOS os dados (features, normalização, limpeza)
+3. ✅ **FASE 3 - Machine Learning**: Clustering (K-Means) e detecção de anomalias (Isolation Forest)
+4. ✅ Salva resultados em 3 diretórios organizados
+
+**Estrutura Modular do Pipeline:**
+
+O pipeline é composto por módulos especializados em `cli/pipeline_steps/`:
+- `extraction.py` - Gerencia extração de dados via FastF1
+- `preprocessing.py` - Coordena pré-processamento de 5 tipos de dados
+- `ml.py` - Executa análises de ML (imputação, encoding, clustering, anomalias)
+- `reporting.py` - Classe `Reporter` para formatação consistente de saídas
 
 **Opções:**
 - `YEAR`: Ano da temporada (ex: 2025)
@@ -212,6 +220,17 @@ data/processed/races/
             └── ...
 ```
 
+### Resultados de ML (`data/ml/races/`)
+
+```
+data/ml/races/
+└── 2025/
+    └── round_01/
+        ├── laps_clustered.parquet      # K-Means: diferentes ritmos de pilotagem
+        ├── laps_anomalies.parquet      # Isolation Forest: voltas anômalas
+        └── anomalies_summary.parquet   # Resumo de anomalias por piloto
+```
+
 ---
 
 ## Troubleshooting
@@ -255,9 +274,14 @@ uv run python cli/extract.py 2025 1
 |----------|-------------------|---------|
 | Extração completa | ~30-60s | ~11-15MB |
 | Pré-processamento | ~10-20s | ~8-12MB |
-| Pipeline completo | ~40-80s | ~20-25MB |
+| Machine Learning | ~5-15s | ~2-5MB |
+| Pipeline completo | ~45-95s | ~25-35MB |
 
 **Nota:** Primeira execução é mais lenta (download inicial).
+
+## Configuração
+
+Todos os parâmetros do pipeline (num_points, contamination, random_state, etc.) são configuráveis através do arquivo `config.yaml` na raiz do projeto. Veja o arquivo para todas as opções disponíveis.
 
 ---
 

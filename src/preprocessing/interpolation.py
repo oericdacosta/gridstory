@@ -9,11 +9,13 @@ import numpy as np
 import pandas as pd
 from scipy.interpolate import make_interp_spline
 
+from src.utils.config import get_config
+
 
 def synchronize_telemetry(
     telemetry: pd.DataFrame,
     track_length: float,
-    num_points: int = 5000,
+    num_points: int | None = None,
     telemetry_columns: list[str] | None = None,
 ) -> pd.DataFrame:
     """
@@ -22,7 +24,7 @@ def synchronize_telemetry(
     Args:
         telemetry: DataFrame de telemetria bruta com coluna 'Distance' e canais de telemetria
         track_length: Comprimento total da pista em metros
-        num_points: Número de pontos no grid sincronizado (padrão: 5000)
+        num_points: Número de pontos no grid sincronizado (padrão: carrega de config.yaml)
         telemetry_columns: Lista de colunas de telemetria para interpolar.
                           Se None, usa ['Speed', 'RPM', 'Throttle', 'Brake', 'nGear', 'DRS']
 
@@ -33,6 +35,9 @@ def synchronize_telemetry(
         >>> telemetry = lap.get_telemetry()
         >>> synchronized = synchronize_telemetry(telemetry, track_length=5281.0)
     """
+    if num_points is None:
+        config = get_config()
+        num_points = config.get_num_points()
     if telemetry_columns is None:
         telemetry_columns = ["Speed", "RPM", "Throttle", "Brake", "nGear", "DRS"]
 
@@ -132,7 +137,7 @@ def synchronize_telemetry(
 def synchronize_multiple_laps(
     laps: pd.DataFrame,
     track_length: float,
-    num_points: int = 5000,
+    num_points: int | None = None,
     telemetry_columns: list[str] | None = None,
 ) -> pd.DataFrame:
     """
@@ -141,7 +146,7 @@ def synchronize_multiple_laps(
     Args:
         laps: DataFrame contendo dados de voltas com telemetria
         track_length: Comprimento total da pista em metros
-        num_points: Número de pontos no grid sincronizado
+        num_points: Número de pontos no grid sincronizado (padrão: carrega de config.yaml)
         telemetry_columns: Lista de colunas de telemetria para interpolar
 
     Returns:
@@ -152,6 +157,9 @@ def synchronize_multiple_laps(
         >>> laps = session.laps.pick_driver('VER').pick_quicklaps()
         >>> synchronized_matrix = synchronize_multiple_laps(laps, track_length=5281.0)
     """
+    if num_points is None:
+        config = get_config()
+        num_points = config.get_num_points()
     synchronized_laps = []
 
     for idx, lap in laps.iterrows():

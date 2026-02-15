@@ -9,11 +9,14 @@ import numpy as np
 import pandas as pd
 from sklearn.ensemble import IsolationForest
 
+from src.utils.config import get_config
+
 
 def detect_anomalies_isolation_forest(
     df: pd.DataFrame,
     feature_columns: list[str],
-    contamination: float = 0.05,
+    contamination: float | None = None,
+    contamination_profile: str = "normal",
     group_by: str | None = None,
     return_scores: bool = False,
 ) -> pd.DataFrame:
@@ -27,8 +30,10 @@ def detect_anomalies_isolation_forest(
     Args:
         df: DataFrame com dados de voltas (já pré-processado e escalonado)
         feature_columns: Colunas para usar na detecção (ex: ['LapTime_seconds', 'Sector1Time_seconds'])
-        contamination: Proporção esperada de anomalias no dataset (padrão: 0.05 = 5%)
-                      Ajusta a sensibilidade do algoritmo
+        contamination: Proporção esperada de anomalias no dataset (padrão: carrega de config.yaml)
+                      Se especificado, sobrescreve contamination_profile
+        contamination_profile: Perfil de corrida para contamination - "clean", "normal", ou "chaotic"
+                             Ignorado se contamination for especificado explicitamente
         group_by: Coluna para agrupar antes da detecção (ex: 'Driver' para analisar cada piloto)
         return_scores: Se True, retorna também o anomaly score (quanto mais negativo, mais anômalo)
 
@@ -50,21 +55,27 @@ def detect_anomalies_isolation_forest(
         >>> from src.preprocessing.feature_engineering import enrich_dataframe_with_stats, scale_features
         >>> laps_processed = enrich_dataframe_with_stats(laps_df, ...)
         >>> laps_scaled = scale_features(laps_processed, ['LapTime_seconds', 'Sector1Time_seconds'])
-        >>> 
+        >>>
         >>> # Detectar anomalias
         >>> laps_anomalies = detect_anomalies_isolation_forest(
         ...     laps_scaled,
         ...     feature_columns=['LapTime_seconds', 'Sector1Time_seconds'],
-        ...     contamination=0.05,
         ...     group_by='Driver',
         ...     return_scores=True
         ... )
-        >>> 
+        >>>
         >>> # Analisar anomalias
         >>> anomalies = laps_anomalies[laps_anomalies['is_anomaly']]
         >>> print(f"Anomalias detectadas: {len(anomalies)}")
         >>> print(anomalies[['Driver', 'LapNumber', 'LapTime_seconds', 'anomaly_score']])
     """
+    config = get_config()
+
+    if contamination is None:
+        contamination = config.get_contamination(profile=contamination_profile)
+
+    random_state = config.get_random_state()
+    n_estimators = config.get_n_estimators()
     df = df.copy()
 
     # Verificar se features existem
@@ -90,8 +101,8 @@ def detect_anomalies_isolation_forest(
             # Criar e treinar Isolation Forest
             iso_forest = IsolationForest(
                 contamination=contamination,
-                random_state=42,
-                n_estimators=100
+                random_state=random_state,
+                n_estimators=n_estimators
             )
 
             # Predição: 1 = normal, -1 = anomalia

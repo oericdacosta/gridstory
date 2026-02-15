@@ -93,6 +93,11 @@ class Config:
         return self._config.get("ml", {})
 
     @property
+    def preprocessing_config(self) -> Dict[str, Any]:
+        """Retorna configurações de pré-processamento."""
+        return self._config.get("preprocessing", {})
+
+    @property
     def api_config(self) -> Dict[str, Any]:
         """Retorna configurações da API."""
         return self._config.get("api", {})
@@ -101,6 +106,88 @@ class Config:
     def llm_config(self) -> Dict[str, Any]:
         """Retorna configurações de LLM."""
         return self._config.get("llm", {})
+
+    # Getters específicos para pré-processamento
+    def get_num_points(self) -> int:
+        """Retorna número de pontos para interpolação."""
+        return self.get("preprocessing.interpolation.num_points", 5000)
+
+    def get_median_filter_kernel_size(self) -> int:
+        """Retorna tamanho do kernel para filtro mediano."""
+        return self.get("preprocessing.signal_processing.median_filter_kernel_size", 5)
+
+    def get_savgol_kernel_size(self) -> int:
+        """Retorna tamanho do kernel para filtro Savitzky-Golay."""
+        return self.get("preprocessing.signal_processing.savgol_kernel_size", 11)
+
+    def get_savgol_polyorder(self) -> int:
+        """Retorna ordem polinomial para filtro Savitzky-Golay."""
+        return self.get("preprocessing.signal_processing.savgol_polyorder", 3)
+
+    def get_outlier_threshold(self) -> float:
+        """Retorna threshold para detecção de outliers."""
+        return self.get("preprocessing.signal_processing.outlier_threshold", 3.0)
+
+    def get_imputation_strategy(self) -> str:
+        """Retorna estratégia de imputação."""
+        return self.get("preprocessing.imputation.strategy", "median")
+
+    def get_use_knn_imputation(self) -> bool:
+        """Retorna se deve usar KNN para imputação."""
+        return self.get("preprocessing.imputation.use_knn", False)
+
+    def get_encoding_drop_first(self) -> bool:
+        """Retorna se deve dropar primeira categoria no encoding."""
+        return self.get("preprocessing.encoding.drop_first", True)
+
+    def get_scaling_type(self) -> str:
+        """Retorna tipo de escalonamento."""
+        return self.get("preprocessing.scaling.type", "robust")
+
+    # Getters específicos para ML
+    def get_random_state(self) -> int:
+        """Retorna random state global para reprodutibilidade."""
+        return self.get("ml.random_state", 42)
+
+    def get_contamination(self, profile: str = "normal") -> float:
+        """
+        Retorna valor de contaminação para anomaly detection.
+
+        Args:
+            profile: Perfil de corrida - "clean", "normal", ou "chaotic"
+
+        Returns:
+            Valor de contaminação (padrão: 0.05)
+        """
+        # Primeiro tentar pegar do perfil específico
+        contamination = self.get(
+            f"ml.anomaly.contamination_profiles.{profile}", None
+        )
+        if contamination is not None:
+            return contamination
+
+        # Fallback para contamination padrão
+        return self.get("ml.anomaly.contamination", 0.05)
+
+    def get_n_estimators(self) -> int:
+        """Retorna número de estimadores para Isolation Forest."""
+        return self.get("ml.anomaly.n_estimators", 100)
+
+    def get_k_range_min(self) -> int:
+        """Retorna número mínimo de clusters."""
+        return self.get("ml.clustering.k_range_min", 2)
+
+    def get_k_range_max(self) -> int:
+        """Retorna número máximo de clusters."""
+        return self.get("ml.clustering.k_range_max", 6)
+
+    def get_dbscan_min_samples(self) -> int:
+        """Retorna min_samples para DBSCAN."""
+        return self.get("ml.dbscan.min_samples", 3)
+
+    def get_dbscan_eps(self) -> float:
+        """Retorna eps para DBSCAN."""
+        return self.get("ml.dbscan.eps", 0.5)
 
     def __getitem__(self, key: str) -> Any:
         """Permite acesso via colchetes."""

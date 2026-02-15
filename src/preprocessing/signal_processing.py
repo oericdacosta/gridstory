@@ -8,11 +8,13 @@ características importantes como pontos de frenagem e zonas de aceleração.
 import numpy as np
 from scipy.signal import medfilt, savgol_filter
 
+from src.utils.config import get_config
+
 
 def clean_signal(
     signal: np.ndarray,
     method: str = "median",
-    kernel_size: int = 5,
+    kernel_size: int | None = None,
     **kwargs,
 ) -> np.ndarray:
     """
@@ -21,17 +23,23 @@ def clean_signal(
     Args:
         signal: Array de sinal de entrada (ex: velocidade, aceleração)
         method: Método de filtragem - "median" ou "savgol"
-        kernel_size: Tamanho do kernel do filtro (deve ser ímpar para filtro mediano)
+        kernel_size: Tamanho do kernel do filtro (padrão: carrega de config.yaml)
         **kwargs: Parâmetros adicionais para filtros específicos
-                 - Para savgol: polyorder (padrão: 2)
+                 - Para savgol: polyorder (padrão: carrega de config.yaml)
 
     Returns:
         Array de sinal limpo
 
     Example:
-        >>> clean_speed = clean_signal(raw_speed, method="median", kernel_size=5)
-        >>> smooth_speed = clean_signal(raw_speed, method="savgol", kernel_size=11, polyorder=3)
+        >>> clean_speed = clean_signal(raw_speed, method="median")
+        >>> smooth_speed = clean_signal(raw_speed, method="savgol", polyorder=3)
     """
+    config = get_config()
+    if kernel_size is None:
+        if method == "median":
+            kernel_size = config.get_median_filter_kernel_size()
+        else:  # savgol
+            kernel_size = config.get_savgol_kernel_size()
     if len(signal) == 0:
         return signal
 
@@ -59,7 +67,7 @@ def clean_signal(
 
     elif method == "savgol":
         # Filtro Savitzky-Golay: suaviza sinal preservando derivadas
-        polyorder = kwargs.get("polyorder", 2)
+        polyorder = kwargs.get("polyorder", config.get_savgol_polyorder())
 
         if kernel_size % 2 == 0:
             kernel_size += 1  # Garantir tamanho ímpar do kernel
@@ -91,8 +99,8 @@ def calculate_derivative(
     signal: np.ndarray,
     delta_x: float = 1.0,
     smooth: bool = True,
-    kernel_size: int = 11,
-    polyorder: int = 3,
+    kernel_size: int | None = None,
+    polyorder: int | None = None,
 ) -> np.ndarray:
     """
     Calcula derivada suave de um sinal (ex: aceleração a partir de velocidade).
@@ -101,8 +109,8 @@ def calculate_derivative(
         signal: Array de sinal de entrada (ex: velocidade vs distância)
         delta_x: Espaçamento entre pontos do sinal (ex: passo de distância em metros)
         smooth: Se deve aplicar suavização Savitzky-Golay antes da derivada
-        kernel_size: Tamanho da janela para filtro Savitzky-Golay
-        polyorder: Ordem polinomial para filtro Savitzky-Golay
+        kernel_size: Tamanho da janela para filtro Savitzky-Golay (padrão: carrega de config.yaml)
+        polyorder: Ordem polinomial para filtro Savitzky-Golay (padrão: carrega de config.yaml)
 
     Returns:
         Derivada do sinal
@@ -113,6 +121,11 @@ def calculate_derivative(
         >>> # Calcular jerk a partir de aceleração
         >>> jerk = calculate_derivative(acceleration, delta_x=distance_step)
     """
+    config = get_config()
+    if kernel_size is None:
+        kernel_size = config.get_savgol_kernel_size()
+    if polyorder is None:
+        polyorder = config.get_savgol_polyorder()
     if len(signal) < 2:
         return np.array([])
 
@@ -143,7 +156,7 @@ def calculate_derivative(
 
 def remove_outliers(
     signal: np.ndarray,
-    threshold: float = 3.0,
+    threshold: float | None = None,
     method: str = "median",
 ) -> tuple[np.ndarray, np.ndarray]:
     """
@@ -153,15 +166,19 @@ def remove_outliers(
         signal: Array de sinal de entrada
         threshold: Número de desvios padrão (para 'zscore') ou
                   múltiplos de MAD (para 'median') para considerar como outlier
+                  (padrão: carrega de config.yaml)
         method: Método de detecção - "zscore" ou "median" (MAD - Desvio Absoluto Mediano)
 
     Returns:
         Tupla de (sinal_limpo, máscara_outlier) onde máscara_outlier é True para outliers
 
     Example:
-        >>> clean_data, outliers = remove_outliers(rpm_data, threshold=3.0)
+        >>> clean_data, outliers = remove_outliers(rpm_data)
         >>> print(f"Encontrados {outliers.sum()} outliers")
     """
+    if threshold is None:
+        config = get_config()
+        threshold = config.get_outlier_threshold()
     if len(signal) == 0:
         return signal, np.array([], dtype=bool)
 
@@ -247,13 +264,13 @@ def apply_telemetry_pipeline(
         # Etapa 1: Remover outliers
         if outlier_removal:
             current_signal, _ = remove_outliers(
-                current_signal, threshold=3.0, method="median"
+                current_signal, method="median"
             )
 
         # Etapa 2: Reduzir ruído
         if noise_reduction:
             current_signal = clean_signal(
-                current_signal, method="median", kernel_size=5
+                current_signal, method="median"
             )
 
         processed[channel_name] = current_signal
