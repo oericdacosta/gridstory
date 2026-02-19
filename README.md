@@ -23,11 +23,12 @@ PitWall AI é um pipeline de engenharia de dados para análise de corridas de F�
 |--------|--------|-----------|
 | Extração de Dados | ✅ Implementado | FastF1, Pandas, NumPy |
 | Pré-processamento | ✅ Implementado | SciPy (interpolação, signal processing, features) + Scikit-learn (imputação, encoding, escalonamento) |
-| Machine Learning | ✅ Implementado | Scikit-learn (K-Means, DBSCAN, Isolation Forest, Pipeline) |
-| Validação | Planejado | Pydantic |
-| API | Planejado | FastAPI |
-| LLM | Planejado | DSPY, Agno |
-| Observabilidade | Planejado | MLflow |
+| Machine Learning | ✅ Implementado | Scikit-learn (K-Means, DBSCAN, Isolation Forest) com métricas por piloto |
+| Tracking ML | ✅ Implementado | MLFlow (métricas, parâmetros, artefatos CSV) |
+| Change Point Detection | 🚧 Próxima Fase | Ruptures (detecção de cliff de pneus) |
+| Validação | 🚧 Próxima Fase | Pydantic |
+| API | 📅 Planejado | FastAPI |
+| LLM | 📅 Planejado | DSPY, Agno |
 
 ## Instalação
 
@@ -49,7 +50,7 @@ uv sync
 
 ## Uso Rápido
 
-### Pipeline Completo (Extração + Pré-processamento)
+### 1. Pipeline Completo (Extração + Pré-processamento + ML)
 
 ```bash
 # Um único comando que faz TUDO
@@ -70,7 +71,26 @@ uv run python cli/pipeline.py 2025 1 --show-sample
 5. ✅ Salva dados processados em `data/processed/races/YEAR/round_XX/`
 6. ✅ Salva resultados de ML em `data/ml/races/YEAR/round_XX/`
 
-### Comandos Individuais (Opcional)
+### 2. Análise de ML com Tracking (MLFlow)
+
+```bash
+# Análise completa com tracking MLFlow
+uv run python -m cli.ml_analysis --year 2025 --round 1 --mlflow --show-metrics
+
+# Clustering apenas
+uv run python -m cli.ml_analysis --year 2025 --round 1 --clustering --mlflow
+
+# Piloto específico
+uv run python -m cli.ml_analysis --year 2025 --round 1 --driver VER --mlflow --save
+
+# Ver resultados no MLFlow UI
+uv run mlflow ui
+# Acesse: http://localhost:5000
+```
+
+**Pré-requisito:** dados já processados pelo `pipeline.py` (passo 1).
+
+### 3. Comandos Individuais
 
 ```bash
 # Apenas extração (SEMPRE extrai todos os dados)
@@ -301,9 +321,9 @@ Eventos (JSON) → DSPY/Agno → Narrativas & Chat
 | Pré-processamento | SciPy (interpolate, signal, stats) | ✅ Implementado | [src/preprocessing/](src/preprocessing/README.md) |
 | Pré-proc ML | Scikit-learn (imputers, encoders, scalers) | ✅ Implementado | [PREPROCESSING.md](PREPROCESSING.md) |
 | Machine Learning | Scikit-learn (KMeans, DBSCAN, IsolationForest) | ✅ Implementado | [src/ml/](src/ml/README.md) |
+| Tracking ML | MLFlow (métricas, parâmetros, artefatos) | ✅ Implementado | [MLFLOW_SETUP.md](MLFLOW_SETUP.md) |
 | Change Point Detection | Ruptures | 🚧 Próxima Fase | - |
 | Validação | Pydantic | 🚧 Próxima Fase | - |
-| Observabilidade ML | MLflow | 🚧 Próxima Fase | - |
 | API | FastAPI | 📅 Planejado | - |
 | LLM | DSPY, Agno | 📅 Planejado | - |
 
