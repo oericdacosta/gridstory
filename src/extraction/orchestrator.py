@@ -5,8 +5,8 @@ Coordena o processo completo de extração de dados, incluindo polling,
 ETL e salvamento em arquivos Parquet.
 """
 
-from src.extraction.polling import ingest_race_data, quick_load_session
-from src.extraction.etl import RaceDataETL
+from .polling import ingest_race_data, quick_load_session
+from .etl import RaceDataETL
 
 
 def extract_race_complete(

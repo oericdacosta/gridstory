@@ -27,5 +27,10 @@ data/
 .DS_Store
 Thumbs.db
 
+# MLFlow — tracking local e artefatos gerados automaticamente
+# mlruns/ contém modelos, conda.yaml, requirements.txt por run (pode ter 10k+ arquivos)
+mlruns/
+tmp_mlflow_artifacts/
+
 # Documentação local (não versionada)
 CHANGELOG.md

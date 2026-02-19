@@ -9,6 +9,8 @@ O módulo de ML transforma dados pré-processados em **eventos e insights estat�
 - **Clusterização** (K-Means, DBSCAN) - Agrupa voltas semelhantes para identificar ritmos
 - **Detecção de Anomalias** (Isolation Forest) - Identifica eventos raros e outliers
 - **Pipeline** - Integra pré-processamento + ML em um fluxo unificado
+- **Métricas** - Avaliação completa (Silhouette, Davies-Bouldin, Calinski-Harabasz)
+- **MLFlow Tracking** - Rastreamento de experimentos, parâmetros e métricas
 
 **Por quê não supervisionado?**
 
@@ -50,9 +52,9 @@ Eventos Estruturados (JSON) → [Futuro: LLM]
 ### Objetivo
 
 Agrupar voltas semelhantes para identificar diferentes **modos de pilotagem**:
-- **Ritmo Puro** (voltas rápidas, pista limpa)
-- **Gestão de Pneus** (voltas mais lentas, economizando)
-- **Tráfego** (voltas atrapalhadas)
+- **Push** (`cluster_semantic='push'`) — voltas mais rápidas que o ritmo dominante do piloto
+- **Base pace** (`cluster_semantic='base'`) — ritmo sustentado na maior parte da corrida
+- **Degraded** (`cluster_semantic='degraded'`) — voltas mais lentas (degradação de pneu, tráfego)
 
 ---
 
@@ -110,10 +112,10 @@ for driver in laps_clustered['Driver'].unique():
 **Saída esperada:**
 ```
 VER:
-cluster_label  mean      count
-0              89.234    15     (Ritmo Puro)
-1              91.456    8      (Gestão de Pneus)
-2              93.789    3      (Tráfego)
+cluster_label  cluster_semantic  mean      count
+0              push              89.234    15
+1              base              91.456    8
+2              degraded          93.789    3
 ```
 
 #### Encontrar k Ótimo
@@ -138,8 +140,20 @@ print(f"Número ótimo de clusters: {optimal_k}")
 
 #### Colunas Adicionadas
 
-- `cluster_label`: Label do cluster (0, 1, 2, ...)
+- `cluster_label`: Label do cluster com semântica fixa: `0=push`, `1=base`, `2=degraded`
+- `cluster_semantic`: Label textual (`'push'`, `'base'`, `'degraded'`) — contrato para downstream (Pydantic, LLM)
+- `cluster_semantic_clean`: `True` quando `push_delta < base_delta < degraded_delta` (separação semântica válida). `False` indica caso degenerado — o piloto não teve um cluster de push genuinamente mais rápido, ou o degraded é mais rápido que o base
 - `cluster_centroid_distance`: Distância ao centroide (quanto menor, mais típico do cluster)
+
+#### Lógica de Semântica Determinística (`normalize_cluster_semantics`)
+
+A numeração do K-Means é arbitrária. A função `normalize_cluster_semantics()` aplica lógica determinística por piloto:
+
+1. **Base** → cluster com mais voltas (ritmo dominante da corrida). Desempate: menor `abs(delta_mean)` — cluster mais próximo da mediana
+2. **Push** → entre os restantes, menor `LapTime_delta_mean` (mais rápido)
+3. **Degraded** → entre os restantes, maior `LapTime_delta_mean` (mais lento)
+
+Isso garante que `cluster_label=1` é sempre base pace para todos os pilotos, independente do índice original atribuído pelo K-Means.
 
 ---
 
@@ -400,7 +414,363 @@ laps_df['is_anomaly'] = predictions == -1
 
 ---
 
-## 4. Casos de Uso Práticos
+## 4. Métricas de Avaliação
+
+### 4.0. Estatísticas por Cluster
+
+**Função:** `calculate_cluster_statistics()`
+
+Retorna um DataFrame com estatísticas agregadas por cluster, incluindo as novas colunas semânticas:
+
+```python
+from src.ml.metrics import calculate_cluster_statistics
+
+stats = calculate_cluster_statistics(
+    laps_clustered,
+    cluster_column='cluster_label',
+    feature_columns=['LapTime_delta', 'TyreAge_normalized'],
+    driver_column='Driver',  # agrupa por piloto → cluster_size_pct por piloto
+)
+# Colunas: Driver | cluster_label | cluster_semantic | size | cluster_size_pct | LapTime_delta_mean | ...
+```
+
+| Coluna | Descrição |
+|--------|-----------|
+| `cluster_label` | ID do cluster (0=push, 1=base, 2=degraded) |
+| `cluster_semantic` | Label textual (quando `cluster_semantic` existe no df) |
+| `size` | Número de voltas no cluster |
+| `cluster_size_pct` | % das voltas do piloto nesse cluster (com `driver_column`) |
+
+---
+
+### 4.1. Métricas de Clustering
+
+**Módulo:** `src/ml/metrics.py`
+
+#### Métricas Disponíveis
+
+| Métrica | Range | Melhor | Descrição |
+|---------|-------|--------|-----------|
+| **Silhouette Score** | [-1, 1] | Maior | Coesão vs separação dos clusters |
+| **Davies-Bouldin Index** | [0, ∞) | Menor | Compacidade vs separação |
+| **Calinski-Harabasz** | [0, ∞) | Maior | Ratio between/within variance |
+| **Inércia** | [0, ∞) | Menor | Distância total aos centróides (K-Means) |
+
+#### Interpretação do Silhouette Score
+
+- **0.7 - 1.0**: Estrutura forte, clusters bem separados
+- **0.5 - 0.7**: Estrutura razoável, clustering aceitável
+- **0.25 - 0.5**: Estrutura fraca, clusters se sobrepõem
+- **< 0.25**: Sem estrutura significativa
+
+#### Uso
+
+```python
+from src.ml.metrics import calculate_clustering_metrics, evaluate_clustering_quality
+
+# Calcular métricas
+metrics = calculate_clustering_metrics(X, labels, remove_noise=True)
+print(f"Silhouette Score: {metrics['silhouette_score']:.3f}")
+print(f"Davies-Bouldin: {metrics['davies_bouldin_score']:.3f}")
+print(f"Calinski-Harabasz: {metrics['calinski_harabasz_score']:.1f}")
+
+# Avaliar qualidade
+evaluation = evaluate_clustering_quality(metrics)
+print(f"Qualidade: {evaluation['quality']}")  # excellent, good, fair, poor
+print(f"Recomendação: {evaluation['recommendation']}")
+```
+
+---
+
+### 4.2. Métricas de Anomaly Detection
+
+**Módulo:** `src/ml/metrics.py`
+
+#### Métricas Disponíveis
+
+| Métrica | Descrição |
+|---------|-----------|
+| **n_anomalies** | Número total de anomalias detectadas |
+| **anomaly_rate** | Taxa de anomalias (%) |
+| **score_mean** | Média dos scores de anomalia |
+| **anomaly_score_mean** | Média dos scores das anomalias |
+| **normal_score_mean** | Média dos scores dos pontos normais |
+
+#### Uso
+
+```python
+from src.ml.metrics import calculate_anomaly_metrics
+
+# Calcular métricas
+anomaly_metrics = calculate_anomaly_metrics(predictions, scores)
+print(f"Anomalias: {anomaly_metrics['n_anomalies']} ({anomaly_metrics['anomaly_rate']:.2f}%)")
+print(f"Score médio das anomalias: {anomaly_metrics['anomaly_score_mean']:.3f}")
+```
+
+---
+
+## 5. MLFlow Tracking
+
+### 5.1. Visão Geral
+
+**MLFlow** é uma plataforma open-source para gerenciar o ciclo de vida de Machine Learning:
+- **Tracking**: Registrar parâmetros, métricas e artefatos
+- **Models**: Gerenciar e versionar modelos
+- **Compare**: Comparar experimentos e encontrar melhor configuração
+
+**Módulo:** `src/ml/tracking.py`
+
+---
+
+### 5.2. Setup Inicial
+
+#### 1. Instalar dependência
+
+```bash
+uv sync  # MLFlow já está incluído nas dependências
+```
+
+#### 2. Configurar MLFlow
+
+```python
+from src.ml import setup_mlflow
+
+# Configurar experimento
+setup_mlflow(
+    experiment_name="F1_2025_Round_01",
+    tracking_uri="file:./mlruns",  # Local (padrão)
+    enable_autolog=True  # Autolog do scikit-learn
+)
+```
+
+#### 3. Iniciar MLFlow UI
+
+```bash
+mlflow ui
+# Acesse: http://localhost:5000
+```
+
+---
+
+### 5.3. O Que é Trackeado?
+
+#### Parâmetros (Inputs)
+- `n_clusters`: Número de clusters (K-Means)
+- `contamination`: Taxa esperada de anomalias (Isolation Forest)
+- `eps`, `min_samples`: Parâmetros do DBSCAN
+- `random_state`: Seed de aleatoriedade
+- `scaler_type`: Tipo de escalonamento usado
+
+#### Métricas (Outputs)
+- **Clustering**:
+  - `silhouette_score`
+  - `davies_bouldin_score`
+  - `calinski_harabasz_score`
+  - `n_clusters`, `n_samples`
+
+- **Anomaly Detection**:
+  - `n_anomalies`, `anomaly_rate`
+  - `score_mean`, `score_std`
+  - `anomaly_score_mean`
+
+#### Artefatos
+- Modelos treinados (`.pkl`)
+- DataFrames de resultados (`.csv`, `.parquet`)
+
+---
+
+### 5.4. Tracking no Pipeline
+
+```python
+from src.ml import run_race_analysis
+import pandas as pd
+
+# Carregar dados
+laps_df = pd.read_parquet('data/processed/races/2025/round_01/laps_processed.parquet')
+
+# Executar análise COM tracking
+results = run_race_analysis(
+    laps_df=laps_df,
+    analysis_type='all',
+    enable_mlflow=True,
+    experiment_name='F1_2025_Round_01',
+    run_name='Full_Analysis_AllDrivers',
+)
+
+# Ver resultados
+print(f"MLFlow Run ID: {results['mlflow_run_id']}")
+print(results['clustering_metrics'])
+print(results['anomaly_metrics'])
+```
+
+---
+
+### 5.5. CLI de Análise com MLFlow
+
+```bash
+# Análise completa com tracking
+uv run python cli/ml_analysis.py --year 2025 --round 1 --mlflow --show-metrics
+
+# Apenas clustering
+uv run python cli/ml_analysis.py --year 2025 --round 1 --clustering --mlflow
+
+# Piloto específico
+uv run python cli/ml_analysis.py --year 2025 --round 1 --driver VER --mlflow --save
+
+# Comparar runs anteriores
+uv run python cli/ml_analysis.py --compare --experiment "F1_2025_Round_01" --max-runs 5
+```
+
+---
+
+### 5.6. Comparar Experimentos
+
+```python
+from src.ml import compare_runs, get_best_run
+
+# Comparar últimos 10 runs
+comparison = compare_runs(
+    experiment_name="F1_2025_Round_01",
+    metric_names=['silhouette_score', 'davies_bouldin_score'],
+    max_runs=10
+)
+print(comparison)
+
+# Encontrar melhor run
+best = get_best_run(
+    experiment_name="F1_2025_Round_01",
+    metric_name='silhouette_score',
+    ascending=False  # Maior silhouette é melhor
+)
+print(f"Melhor run: {best['run_name']}")
+print(f"Silhouette: {best['metrics']['silhouette_score']:.3f}")
+print(f"Parâmetros: {best['params']}")
+```
+
+---
+
+### 5.7. Tracking Manual (Avançado)
+
+```python
+from src.ml.tracking import track_clustering_run, track_anomaly_detection_run
+from sklearn.cluster import KMeans
+from sklearn.ensemble import IsolationForest
+
+# Clustering com tracking
+kmeans = KMeans(n_clusters=3, random_state=42)
+labels = kmeans.fit_predict(X)
+
+run_id = track_clustering_run(
+    run_name="KMeans_k3_RobustScaler",
+    X=X,
+    labels=labels,
+    params={'n_clusters': 3, 'random_state': 42, 'scaler': 'robust'},
+    model=kmeans,
+    tags={'driver': 'VER', 'algorithm': 'kmeans'}
+)
+
+# Anomaly detection com tracking
+iso_forest = IsolationForest(contamination=0.05, random_state=42)
+predictions = iso_forest.fit_predict(X)
+scores = iso_forest.score_samples(X)
+
+run_id = track_anomaly_detection_run(
+    run_name="IsolationForest_cont005",
+    X=X,
+    predictions=predictions,
+    scores=scores,
+    params={'contamination': 0.05, 'n_estimators': 100},
+    model=iso_forest,
+    tags={'session': 'Race', 'track': 'Bahrain'}
+)
+```
+
+---
+
+### 5.8. Fluxo de Trabalho Recomendado
+
+#### 1. Experimentação Inicial (Sem MLFlow)
+
+```bash
+# Testar pipeline básico
+uv run python cli/ml_analysis.py --year 2025 --round 1 --show-metrics
+```
+
+#### 2. Experimentação com Tracking
+
+```bash
+# Experimentar com diferentes configurações
+uv run python cli/ml_analysis.py --year 2025 --round 1 --mlflow --save
+```
+
+#### 3. Análise de Resultados
+
+```bash
+# Iniciar MLFlow UI
+mlflow ui
+
+# Acesse http://localhost:5000
+# Compare runs, visualize métricas, identifique melhor configuração
+```
+
+#### 4. Comparação Programática
+
+```python
+from src.ml import compare_runs, get_best_run
+
+# Ver todos os runs
+comparison = compare_runs("F1_2025_Round_01")
+print(comparison)
+
+# Encontrar melhor configuração
+best = get_best_run("F1_2025_Round_01", "silhouette_score")
+print(f"Melhor configuração: {best['params']}")
+```
+
+#### 5. Carregar Melhor Modelo
+
+```python
+import mlflow
+
+# Carregar melhor modelo
+best_run_id = best['run_id']
+model = mlflow.sklearn.load_model(f"runs:/{best_run_id}/model")
+
+# Usar em produção
+predictions = model.predict(new_data)
+```
+
+---
+
+### 5.9. Interpretação de Resultados
+
+#### Clustering (K-Means)
+
+**Bom clustering**:
+- Silhouette > 0.5
+- Davies-Bouldin < 1.0
+- Clusters fazem sentido no contexto F1 (ritmo puro, gestão, tráfego)
+
+**Clustering ruim**:
+- Silhouette < 0.25
+- Davies-Bouldin > 2.0
+- Considere: Ajustar features, tentar DBSCAN, revisar pré-processamento
+
+#### Anomaly Detection
+
+**Configuração adequada**:
+- Taxa de anomalias compatível com eventos esperados (2-5%)
+- Anomalias detectadas correspondem a eventos reais
+- Scores das anomalias significativamente menores que dos normais
+
+**Ajustes necessários**:
+- Taxa muito alta (>10%): Reduzir `contamination`
+- Taxa muito baixa (<1%): Aumentar `contamination`
+- Anomalias não fazem sentido: Revisar features, adicionar domain knowledge
+
+---
+
+## 6. Casos de Uso Práticos
 
 ### Caso 1: Identificar Ritmo de Corrida Real
 

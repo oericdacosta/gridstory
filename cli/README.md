@@ -1,10 +1,10 @@
 # Ferramentas CLI - PitWall AI
 
-Comandos de linha de comando para extração e pré-processamento de dados F1.
+Comandos de linha de comando para extração, pré-processamento e análise de dados F1.
 
 ## Comandos Disponíveis
 
-### 1. pipeline.py (Recomendado)
+### 1. pipeline.py (Recomendado — ponto de entrada)
 
 **Pipeline completo end-to-end:** Extração + Pré-processamento + Machine Learning em um único comando.
 
@@ -108,7 +108,56 @@ uv run python cli/preprocess.py --year 2025 --round 1 --laps --show-sample
 
 ---
 
-### 4. list_data.py
+### 4. ml_analysis.py
+
+**Análise de ML isolada com tracking MLFlow.** Requer dados já processados pelo `pipeline.py`.
+
+```bash
+# Análise completa (clustering + anomaly detection) com tracking
+uv run python -m cli.ml_analysis --year 2025 --round 1 --mlflow --show-metrics
+
+# Salvar resultados em data/ml/
+uv run python -m cli.ml_analysis --year 2025 --round 1 --mlflow --save
+
+# Apenas clustering
+uv run python -m cli.ml_analysis --year 2025 --round 1 --clustering --mlflow
+
+# Apenas detecção de anomalias
+uv run python -m cli.ml_analysis --year 2025 --round 1 --anomaly --mlflow
+
+# Piloto específico
+uv run python -m cli.ml_analysis --year 2025 --round 1 --driver VER --mlflow
+
+# Comparar runs anteriores
+uv run python -m cli.ml_analysis --compare --experiment "F1_2025_Round_01" --max-runs 5
+
+# Mostrar melhor run (maior silhouette)
+uv run python -m cli.ml_analysis --compare --experiment "F1_2025_Round_01" --best
+
+# Visualizar no MLFlow UI
+uv run mlflow ui   # Acesse http://localhost:5000
+```
+
+**Opções principais:**
+- `--year YEAR` / `--round ROUND`: Identificar a corrida
+- `--driver CODE`: Filtrar por piloto (ex: VER, HAM, LEC)
+- `--clustering`: Apenas K-Means por piloto
+- `--anomaly`: Apenas Isolation Forest
+- `--mlflow`: Habilitar tracking MLFlow (métricas + artefatos CSV)
+- `--experiment NAME`: Nome do experimento MLFlow (padrão: `F1_YEAR_Round_XX`)
+- `--run-name NAME`: Nome do run (opcional, gerado automaticamente)
+- `--save`: Salvar DataFrames de resultado em `data/ml/races/`
+- `--show-metrics`: Exibir métricas no terminal
+
+**O que é gerado no MLFlow:**
+- Métricas de clustering **por piloto** (silhouette_mean, davies_bouldin_mean, etc.)
+- Métricas por piloto individual (driver_VER_silhouette, driver_HAM_silhouette, etc.)
+- Métricas de anomaly detection (n_anomalies, anomaly_rate, score_mean)
+- Artefatos CSV na aba **Artifacts**: `laps_clustered.csv`, `laps_anomalies.csv`, `per_driver_metrics.csv`
+
+---
+
+### 5. list_data.py
 
 **Listar dados disponíveis** no sistema.
 
@@ -126,11 +175,17 @@ Mostra:
 
 ## Workflow Recomendado
 
-### Workflow Simplificado (Um comando)
+### Workflow Completo (Recomendado)
 
 ```bash
-# Tudo em um comando
+# 1. Pipeline completo: extração + pré-processamento + ML básico
 uv run python cli/pipeline.py 2025 1
+
+# 2. Análise de ML com tracking MLFlow
+uv run python -m cli.ml_analysis --year 2025 --round 1 --mlflow --show-metrics --save
+
+# 3. Visualizar resultados
+uv run mlflow ui   # http://localhost:5000
 ```
 
 ### Workflow em Etapas (Mais controle)
@@ -144,6 +199,9 @@ uv run python cli/list_data.py
 
 # 3. Pré-processar
 uv run python cli/preprocess.py --year 2025 --round 1 --all --save
+
+# 4. Análise ML com tracking
+uv run python -m cli.ml_analysis --year 2025 --round 1 --mlflow --save
 ```
 
 ---
@@ -289,5 +347,7 @@ Todos os parâmetros do pipeline (num_points, contamination, random_state, etc.)
 
 - [USAGE.md](../USAGE.md) - Guia completo de uso
 - [README.md](../README.md) - Visão geral do projeto
+- [MLFLOW_SETUP.md](../MLFLOW_SETUP.md) - Documentação do MLFlow e métricas
 - [src/extraction/README.md](../src/extraction/README.md) - Módulo de extração
 - [src/preprocessing/README.md](../src/preprocessing/README.md) - Módulo de pré-processamento
+- [src/ml/README.md](../src/ml/README.md) - Módulo de Machine Learning
