@@ -1,4 +1,4 @@
-# Guia de Pré-processamento - PitWall AI
+# Guia de Pré-processamento - gridstory
 
 Documentação completa do pré-processamento de **TODOS os dados** de corridas F1 usando NumPy, Pandas e SciPy.
 

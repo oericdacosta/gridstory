@@ -1,8 +1,8 @@
-# MLFlow Setup e Métricas de ML - PitWall AI
+# MLFlow Setup e Métricas de ML - gridstory
 
 ## ✅ Implementação Concluída
 
-Este documento resume a integração completa do **MLFlow** e **métricas de avaliação** para o pipeline de Machine Learning do PitWall AI.
+Este documento resume a integração completa do **MLFlow** e **métricas de avaliação** para o pipeline de Machine Learning do gridstory.
 
 ---
 

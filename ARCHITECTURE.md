@@ -1,331 +1,187 @@
-# Visão Geral da Arquitetura
+# Architecture — gridstory
 
-## Estrutura do Projeto
-
-```
-pitwall-ai/
-│
-├── cli/                        # Ferramentas de linha de comando
-│   ├── pipeline.py            # [IMPLEMENTADO] Pipeline completo (único ponto de entrada)
-│   ├── pipeline_steps/        # [IMPLEMENTADO] Módulos internos do pipeline
-│   │   ├── extraction.py      # Fase 1: Extração
-│   │   ├── preprocessing.py   # Fase 2: Pré-processamento
-│   │   ├── ml.py              # Fase 3: Machine Learning
-│   │   └── reporting.py       # Formatação de saídas
-│   ├── ruptures_analysis.py   # [IMPLEMENTADO] Calibração de penalty (penalty-search)
-│   ├── list_data.py           # [IMPLEMENTADO] Listagem de dados
-│   ├── generate_report.py     # [PLANEJADO] Geração de relatórios
-│   └── serve.py               # [PLANEJADO] Servidor API
-│
-├── src/                        # Módulos de código-fonte
-│   ├── extraction/            # [IMPLEMENTADO] Extração de dados
-│   │   ├── calendar.py        # Gerenciamento de calendário
-│   │   ├── polling.py         # Polling de disponibilidade
-│   │   ├── etl.py             # Extract, Transform, Load
-│   │   └── orchestrator.py    # Orquestração de extração
-│   │
-│   ├── preprocessing/         # [IMPLEMENTADO] Pré-processamento SciPy
-│   │   ├── interpolation.py   # Sincronização de telemetria
-│   │   ├── signal_processing.py # Processamento de sinal
-│   │   └── feature_engineering.py # Features estatísticas
-│   │
-│   ├── ml/                    # [IMPLEMENTADO] Pipeline ML
-│   │   ├── pipeline.py        # Orquestração completa (run_race_analysis)
-│   │   ├── clustering.py      # K-Means e DBSCAN por piloto
-│   │   ├── anomaly_detection.py # Isolation Forest
-│   │   ├── change_point.py    # Ruptures/PELT — tire cliffs
-│   │   ├── metrics.py         # Métricas de avaliação (silhouette, DB, etc.)
-│   │   └── tracking.py        # Integração MLFlow
-│   │
-│   ├── models/                # [PLANEJADO] Modelos Pydantic
-│   │   ├── race.py            # Modelos de dados de corrida
-│   │   ├── telemetry.py       # Modelos de telemetria
-│   │   ├── events.py          # Modelos de eventos
-│   │   └── timeline.py        # Modelo de timeline de saída
-│   │
-│   ├── api/                   # [PLANEJADO] FastAPI
-│   │   ├── app.py             # Aplicação FastAPI
-│   │   └── routes/            # Rotas da API
-│   │       ├── race.py        # Endpoints de corrida
-│   │       └── chat.py        # Endpoints de chat
-│   │
-│   ├── llm/                   # [PLANEJADO] Integração LLM
-│   │   ├── journalist.py      # Geração de relatórios (DSPY)
-│   │   ├── chatbot.py         # Chat interativo (Agno)
-│   │   └── prompts/           # Templates de prompts
-│   │
-│   ├── observability/         # [PLANEJADO] Observabilidade
-│   │   ├── mlflow_config.py   # Configuração MLflow
-│   │   └── tracing.py         # Rastreamento de LLM
-│   │
-│   └── utils/                 # Utilitários compartilhados
-│       ├── config.py          # Configuração
-│       └── logger.py          # Logging
-│
-├── tests/                      # Suite de testes
-│   ├── test_extraction/       # [IMPLEMENTADO] Testes de extração
-│   ├── preprocessing/         # [IMPLEMENTADO] Testes de pré-processamento (23 testes)
-│   ├── test_ml/               # [PLANEJADO] Testes de ML
-│   ├── test_api/              # [PLANEJADO] Testes de API
-│   └── test_llm/              # [PLANEJADO] Testes de LLM
-│
-├── data/                       # Diretório de dados (gitignored)
-│   ├── raw/                   # Dados brutos extraídos
-│   │   ├── calendar/          # Calendários de temporada
-│   │   └── races/             # Dados de corrida
-│   ├── processed/             # Features processadas para ML
-│   ├── timelines/             # Saída do ML (JSON estruturado)
-│   └── models/                # Modelos ML treinados
-│
-├── notebooks/                  # Jupyter notebooks
-│   ├── 01_exploracao_dados.ipynb
-│   ├── 02_prototipagem_ml.ipynb
-│   └── 03_engenharia_prompt.ipynb
-│
-├── docs/                       # Documentação
-│   ├── architecture.md        # Arquitetura detalhada
-│   ├── api.md                 # Documentação da API
-│   └── ml_pipeline.md         # Documentação do pipeline ML
-│
-├── scripts/                    # Scripts utilitários
-│
-├── config.yaml                 # Configuração centralizada
-├── main.py                     # Entry point principal (futuro: servidor API)
-├── README.md                   # Documentação do projeto
-├── USAGE.md                    # Guia de uso (extração)
-├── PREPROCESSING.md            # Guia de pré-processamento
-├── ARCHITECTURE.md             # Este arquivo
-├── pyproject.toml             # Dependências
-└── .gitignore
+## Data Flow
 
 ```
-
-## Descrição dos Módulos
-
-### Módulos Implementados
-
-#### `src/extraction/`
-Extração de dados usando a API FastF1.
-- Extrai voltas, telemetria, clima, mensagens de controle
-- Salva dados em formato Parquet
-- Organiza por temporada/rodada
-
-#### `src/preprocessing/`
-Pré-processamento matemático de dados usando SciPy.
-- **Interpolação**: Sincroniza telemetria em grid comum (scipy.interpolate)
-- **Signal Processing**: Remove ruído, calcula derivadas (scipy.signal)
-- **Feature Engineering**: Z-scores, outliers, degradação (scipy.stats)
-- Prepara dados para pipeline ML
-
-#### `src/ml/`
-Pipeline de machine learning para detecção de eventos.
-- **Clustering**: K-Means por piloto (k=3 fixo: push/base/degraded) + DBSCAN complementar
-- **Anomaly Detection**: Isolation Forest (contaminação config-driven por perfil de corrida)
-- **Change Point Detection**: Ruptures/PELT para detectar tire cliffs por stint
-- **Métricas**: Silhouette, Davies-Bouldin, Calinski-Harabasz (por piloto)
-- **MLFlow**: Tracking config-driven (parâmetros, métricas, artefatos CSV)
-
-### Módulos Planejados
-
-#### `src/models/`
-Modelos Pydantic para validação.
-- Garante type safety
-- Valida saída do ML
-- Serializa para JSON
-
-#### `src/api/`
-API REST usando FastAPI.
-- Serve timelines de corrida
-- Gera relatórios
-- Chat interativo
-
-#### `src/llm/`
-Funcionalidades baseadas em LLM.
-- **Jornalista** (DSPY): Gera relatórios de corrida
-- **Chatbot** (Agno): Q&A interativo
-
-#### `src/observability/`
-Rastreamento e monitoramento com MLflow.
-- Rastreia experimentos de ML
-- Monitora chamadas de LLM
-- Métricas de performance
-
-## Fluxo de Dados
-
-```
-┌─────────────┐
-│  API FastF1 │
-└──────┬──────┘
-       │
-       ↓
-┌─────────────────────┐
-│  Extração           │ [IMPLEMENTADO]
-│  (src/extraction)   │
-│  • FastF1           │
-│  • Pandas           │
-└──────┬──────────────┘
-       │
-       ↓
-┌─────────────────────┐
-│  Dados Brutos       │
-│  (data/raw/)        │
-│  • Parquet          │
-└──────┬──────────────┘
-       │
-       ↓
-┌─────────────────────┐
-│  Pré-processamento  │ [IMPLEMENTADO]
-│  (src/preprocessing)│
-│  • SciPy            │
-│  • NumPy            │
-└──────┬──────────────┘
-       │
-       ↓
-┌─────────────────────┐
-│  Dados Processados  │
-│  (data/processed/)  │
-│  • Features         │
-└──────┬──────────────┘
-       │
-       ↓
-┌─────────────────────┐
-│  Pipeline ML        │ [IMPLEMENTADO]
-│  (src/ml/)          │
-│  • Ruptures/PELT    │
-│  • Scikit-learn     │
-│  • MLFlow           │
-└──────┬──────────────┘
-       │
-       ↓
-┌─────────────────┐
-│  Validação      │ [PLANEJADO]
-│  Pydantic       │
-└──────┬──────────┘
-       │
-       ↓
-┌─────────────────┐
-│  Timeline JSON  │
-│  (data/timelines/)│
-└──────┬──────────┘
-       │
-       ↓
-┌─────────────────┐
-│  FastAPI        │ [PLANEJADO]
-│  (src/api/)     │
-└──────┬──────────┘
-       │
-       ├──→ Relatório DSPY
-       │
-       └──→ Chat Agno
+┌────────────────┐
+│  FastF1 API    │
+└───────┬────────┘
+        │
+        ▼
+┌────────────────────────┐
+│  Phase 1: Extraction   │  cli/pipeline_steps/extraction.py
+│  FastF1 + Pandas       │  → data/raw/races/YEAR/round_XX/
+└───────┬────────────────┘    laps.parquet
+        │                     telemetry/*.parquet
+        │                     race_control.parquet
+        │                     weather.parquet
+        │                     results.parquet
+        ▼
+┌────────────────────────┐
+│  Phase 2: Preprocess   │  cli/pipeline_steps/preprocessing.py
+│  SciPy + Scikit-learn  │  → data/processed/races/YEAR/round_XX/
+└───────┬────────────────┘    laps_processed.parquet
+        │                     race_control_processed.parquet
+        │                     weather_processed.parquet
+        │                     results_processed.parquet
+        ▼
+┌────────────────────────┐
+│  Phase 3: ML           │  cli/pipeline_steps/ml.py
+│  Scikit-learn +        │  → data/ml/races/YEAR/round_XX/
+│  Ruptures + MLflow     │    laps_clustered.parquet
+└───────┬────────────────┘    laps_anomalies.parquet
+        │                     tire_cliffs.parquet
+        │                     anomalies_summary.parquet
+        │                     tire_cliffs_summary.parquet
+        ▼
+┌────────────────────────┐
+│  Phase 4: Pydantic     │  cli/pipeline_steps/events.py
+│  (ML ↔ LLM firewall)  │  → data/timelines/races/YEAR/round_XX/
+└───────┬────────────────┘    timeline.json        ← chronological events
+        │                     race_summary.json    ← race context
+        │                     driver_profiles.json ← per-driver stats
+        │
+        │  [Module 2 — planned]
+        ▼
+┌────────────────────────┐
+│  Phase 5: LLM Report   │  src/llm/reporter.py  (DSPY)
+│  DSPY                  │  → data/timelines/races/YEAR/round_XX/
+└───────┬────────────────┘    race_report.md
+        │
+        ▼
+┌────────────────────────┐
+│  Phase 6: API          │  src/api/main.py  (FastAPI)
+│  FastAPI + Agno        │  GET /race/{year}/{round}/report
+└────────────────────────┘  POST /race/{year}/{round}/chat
 ```
 
-## Stack Tecnológica
+---
 
-| Componente | Tecnologia | Status |
-|-----------|-----------|--------|
-| Extração de Dados | FastF1, Pandas, NumPy | ✅ Implementado |
-| Armazenamento | Parquet (PyArrow) | ✅ Implementado |
-| Pré-processamento | SciPy (interpolate, signal, stats) | ✅ Implementado |
-| ML | Scikit-learn (KMeans, DBSCAN, IsolationForest) | ✅ Implementado |
-| Change Point Detection | Ruptures/PELT (tire cliffs) | ✅ Implementado |
-| Observabilidade | MLflow (tracking config-driven) | ✅ Implementado |
-| Validação | Pydantic | Planejado |
-| API | FastAPI | Planejado |
-| LLM | DSPY, Agno | Planejado |
-| CLI | argparse | ✅ Implementado |
+## Project Structure
 
-## Fases de Desenvolvimento
-
-### Fase 1: Extração de Dados [✅ COMPLETA]
-- [x] Integração FastF1
-- [x] Pipeline ETL
-- [x] Armazenamento Parquet
-- [x] Ferramentas CLI
-- [x] Testes
-
-### Fase 2: Pré-processamento [✅ COMPLETA]
-- [x] Sincronização de telemetria (scipy.interpolate)
-- [x] Processamento de sinal (scipy.signal)
-- [x] Engenharia de features estatísticas (scipy.stats)
-- [x] CLI de pré-processamento
-- [x] Testes (23 testes, 100% passando)
-- [x] Documentação completa
-
-### Fase 3: Pipeline ML [✅ COMPLETA]
-- [x] Clustering (K-Means por piloto, k=3, semântica push/base/degraded)
-- [x] DBSCAN (análise complementar)
-- [x] Detecção de anomalias (Isolation Forest, perfis de contaminação)
-- [x] Change Point Detection (Ruptures/PELT, tire cliffs por stint)
-- [x] Métricas de avaliação (por piloto: silhouette, Davies-Bouldin)
-- [x] MLFlow tracking (config-driven, artefatos CSV)
-- [ ] Síntese de eventos estruturados (Pydantic — próxima fase)
-
-### Fase 4: API & LLM [EM BREVE]
-- [ ] Servidor FastAPI
-- [ ] Geração de relatórios DSPY
-- [ ] Chatbot Agno
-- [ ] Integração MLflow
-
-### Fase 5: Produção [FUTURO]
-- [ ] Deploy
-- [ ] Monitoramento
-- [ ] CI/CD
-- [ ] Documentação
-
-## Princípios de Design
-
-1. **Modularidade**: Cada módulo tem uma responsabilidade única
-2. **Testabilidade**: Separação clara facilita testes
-3. **Escalabilidade**: Arquitetura suporta adicionar novas funcionalidades
-4. **Type Safety**: Pydantic garante consistência de dados
-5. **Observabilidade**: MLflow rastreia experimentos e performance
-
-## Detalhamento do Pré-processamento
-
-### Módulos SciPy Utilizados
-
-#### 1. scipy.interpolate
-**Sincronização de telemetria em grid comum.**
-
-- **Problema**: Telemetria de pilotos diferentes tem pontos de medição em distâncias diferentes
-- **Solução**: Interpolação cúbica spline para criar grid uniforme
-- **Benefício**: Permite comparação direta ponto-a-ponto entre pilotos
-
-#### 2. scipy.signal
-**Processamento de sinal e remoção de ruído.**
-
-- **Problema**: Sensores têm ruído elétrico e spikes anormais
-- **Solução**: Filtros medianos e Savitzky-Golay
-- **Benefício**: Dados limpos preservando características físicas reais
-
-#### 3. scipy.stats
-**Engenharia de features estatísticas.**
-
-- **Problema**: Identificar voltas anormais e calcular degradação
-- **Solução**: Z-scores, regressão linear, estatísticas descritivas
-- **Benefício**: Features prontas para ML e detecção de outliers
-
-### Pipeline Típico
-
-```python
-# 1. Carregar dados brutos
-laps = pd.read_parquet('data/raw/races/2025/round_01/laps.parquet')
-
-# 2. Pré-processar (scipy.stats)
-from src.preprocessing.feature_engineering import enrich_dataframe_with_stats
-enriched = enrich_dataframe_with_stats(laps, include_degradation=True)
-
-# 3. Filtrar outliers
-clean = enriched[~enriched['is_outlier']]
-
-# 4. Usar em ML
-# ... aplicar Ruptures, Scikit-learn, etc.
+```
+gridstory/
+│
+├── cli/                              # Command-line entry points
+│   ├── pipeline.py                   # ✅ Main pipeline (phases 1–4)
+│   ├── pipeline_steps/
+│   │   ├── extraction.py             # ✅ Phase 1: FastF1 extraction
+│   │   ├── preprocessing.py          # ✅ Phase 2: SciPy preprocessing
+│   │   ├── ml.py                     # ✅ Phase 3: ML pipeline
+│   │   ├── events.py                 # ✅ Phase 4: Pydantic JSON generation
+│   │   └── reporting.py              # ✅ Reporter helper class
+│   ├── ruptures_analysis.py          # ✅ PELT penalty calibration tool
+│   └── list_data.py                  # ✅ List available data
+│
+├── src/
+│   ├── extraction/                   # ✅ FastF1 ETL
+│   │   ├── calendar.py
+│   │   ├── polling.py
+│   │   ├── etl.py
+│   │   └── orchestrator.py
+│   │
+│   ├── preprocessing/                # ✅ SciPy signal processing + features
+│   │   ├── interpolation.py
+│   │   ├── signal_processing.py
+│   │   └── feature_engineering.py
+│   │
+│   ├── ml/                           # ✅ Unsupervised ML pipeline
+│   │   ├── pipeline.py               # run_race_analysis()
+│   │   ├── clustering.py             # K-Means, DBSCAN
+│   │   ├── anomaly_detection.py      # Isolation Forest
+│   │   ├── anomaly_classification.py # Z-score + race control cross-ref
+│   │   ├── change_point.py           # Ruptures/PELT — tire cliffs
+│   │   ├── strategy.py               # detect_undercuts()
+│   │   ├── timeline.py               # build_race_timeline()
+│   │   ├── race_summary_builder.py   # build_race_summary()
+│   │   ├── driver_profiles_builder.py# build_driver_profiles()
+│   │   ├── metrics.py
+│   │   └── tracking.py               # MLflow integration
+│   │
+│   ├── models/                       # ✅ Pydantic data contracts
+│   │   ├── race_events.py            # RaceTimeline + 6 event types
+│   │   ├── race_summary.py           # RaceSummary, WeatherSummary, PodiumEntry, DnfEntry
+│   │   └── driver_profile.py         # DriverProfile, CompoundUsage
+│   │
+│   ├── llm/                          # 📅 Planned — DSPY + Agno
+│   ├── api/                          # 📅 Planned — FastAPI
+│   └── utils/
+│       ├── config.py
+│       └── logger.py
+│
+├── data/                             # gitignored
+│   ├── raw/races/
+│   ├── processed/races/
+│   ├── ml/races/
+│   └── timelines/races/
+│
+├── docs/
+├── config.yaml
+└── pyproject.toml
 ```
 
-## Referências
+---
 
-- [Guia de Uso - Extração](USAGE.md)
-- [Guia de Pré-processamento](PREPROCESSING.md)
-- [Detalhes da Arquitetura](docs/architecture.md)
-- [Documentação da API](docs/api.md)
-- [Pipeline ML](docs/ml_pipeline.md)
+## Module Descriptions
+
+### `src/extraction/`
+FastF1 ETL — connects to the F1 API and saves all race data as Parquet files.
+Extracts: laps, telemetry (all drivers), race control messages, weather, results.
+
+### `src/preprocessing/`
+SciPy-based signal processing and feature engineering for all five data types.
+Key operations: telemetry interpolation to common grid, noise removal, Z-score features, degradation slope per driver/compound.
+
+### `src/ml/`
+Unsupervised ML pipeline. Three algorithms on lap data:
+- **K-Means** — classifies every lap as `push`, `base`, or `degraded`
+- **Isolation Forest** — flags statistically anomalous laps
+- **Ruptures/PELT** — detects tire cliff change points per stint
+
+Additional modules:
+- `anomaly_classification.py` — determines if anomaly is `driver_error` or `external_incident` (SC/flags)
+- `strategy.py` — detects undercut maneuvers from pit timing and position data
+- `timeline.py` / `race_summary_builder.py` / `driver_profiles_builder.py` — build the Pydantic objects that feed the three JSONs
+
+### `src/models/` — Pydantic firewall
+The only interface between ML and LLM. All ML outputs must pass through these models before being serialized. No raw ML metrics (`anomaly_score`, `z_score`) are exposed to downstream consumers.
+
+Event types in `RaceTimeline`:
+| Type | Description |
+|---|---|
+| `driver_error` | Anomalous lap with no external cause |
+| `external_incident` | Anomalous lap during SC / yellow flag |
+| `tire_dropoff` | Tire cliff detected by PELT |
+| `undercut` | Undercut maneuver — winner / loser |
+| `safety_car` | SC deployed — duration in laps |
+| `penalty` | FIA penalty — driver + reason |
+
+### `src/llm/` (planned)
+- `reporter.py` — DSPY `RaceReportSignature` + `RaceReporter` module
+- `agent.py` — Agno `JSONKnowledgeBase` + `Agent`
+
+### `src/api/` (planned)
+- `main.py` — FastAPI application with report and chat endpoints
+
+---
+
+## Design Principles
+
+1. **LLM receives only semantic data** — Pydantic models remove all internal ML metrics before serialization. The LLM sees `winner`/`loser`, not `anomaly_score`/`z_score`.
+2. **Everything deterministic before the LLM** — race summary, driver profiles, event classification are all calculated by code, not inferred by AI.
+3. **Config-driven** — all ML hyperparameters (contamination, penalty, k) and MLflow settings live in `config.yaml`.
+4. **Fail fast** — `RaceTimeline.model_validate()` raises `ValidationError` immediately if any ML output is malformed.
+
+---
+
+## Development Status
+
+| Phase | Status |
+|---|---|
+| Phase 1: Extraction | ✅ Complete |
+| Phase 2: Preprocessing | ✅ Complete |
+| Phase 3: Machine Learning | ✅ Complete |
+| Phase 4: Pydantic contracts | ✅ Complete |
+| Phase 5: LLM report (DSPY) | 📅 Planned |
+| Phase 6: Chatbot (Agno) | 📅 Planned |
+| Phase 7: API (FastAPI) | 📅 Planned |

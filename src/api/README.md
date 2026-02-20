@@ -1,14 +1,28 @@
-# API Module
+# `src/api/` — FastAPI (planned)
 
-FastAPI application for serving race data and chat interface.
-
-## Planned Endpoints
-
-- `GET /race/{year}/{round}` - Get race timeline
-- `GET /race/{year}/{round}/report` - Get generated report
-- `POST /chat` - Interactive chat with race data
-- `GET /health` - Health check
+REST API for serving race reports and chat interface.
 
 ## Status
 
-🚧 **Under Development** - Not yet implemented
+📅 **Planned — Module 2**
+
+## Planned endpoints
+
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/race/{year}/{round}/report` | Returns the DSPY-generated journalistic report |
+| `POST` | `/race/{year}/{round}/chat` | Interactive chat via Agno knowledge base |
+| `GET` | `/health` | Health check |
+
+## Planned usage
+
+```bash
+uv run fastapi dev src/api/main.py
+# http://localhost:8000/docs
+```
+
+## Dependencies (to install for Module 2)
+
+```bash
+uv add fastapi uvicorn
+```

@@ -1,7 +1,7 @@
 [project]
-name = "pitwall-ai"
-version = "0.1.0"
-description = "Add your description here"
+name = "gridstory"
+version = "0.2.0"
+description = "F1 race data pipeline — from raw telemetry to structured JSON events ready for LLM-powered narrative generation."
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [

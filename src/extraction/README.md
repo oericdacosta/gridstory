@@ -1,4 +1,4 @@
-# Módulo de Extração - PitWall AI
+# Módulo de Extração - gridstory
 
 **Extração completa e estruturada de dados de corridas de Fórmula 1.**
 

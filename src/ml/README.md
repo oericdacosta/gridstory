@@ -1,4 +1,4 @@
-# Guia de Machine Learning - PitWall AI
+# `src/ml/` — Machine Learning — gridstory
 
 Documentação completa do pipeline de **Machine Learning não supervisionado** usando Scikit-learn para análise de corridas de Fórmula 1.
 
@@ -946,13 +946,24 @@ print(slow_anomalies[['Driver', 'LapNumber', 'LapTime_seconds']])
 
 ---
 
-## 8. Próximos Passos
+## 8. Builders de saída (Phase 4)
 
-Após executar pipeline ML:
-1. **Exportar eventos para JSON** - Estruturar saída (Pydantic)
-2. **LLM (DSPY/Agno)** - Gerar narrativas a partir dos eventos
-3. **Visualização** - Plotar clusters e anomalias
-4. **API (FastAPI)** - Servir análises via REST
+Três módulos constroem os objetos Pydantic a partir dos DataFrames de ML:
+
+| Módulo | Função | Output |
+|---|---|---|
+| `timeline.py` | `build_race_timeline()` | `RaceTimeline` → `timeline.json` |
+| `race_summary_builder.py` | `build_race_summary()` | `RaceSummary` → `race_summary.json` |
+| `driver_profiles_builder.py` | `build_driver_profiles()` | `list[DriverProfile]` → `driver_profiles.json` |
+
+These builders are called by `cli/pipeline_steps/events.py` (Phase 4).
+
+## 9. Next steps (Module 2)
+
+The three JSONs in `data/timelines/` are the input for:
+1. **DSPY** — journalistic report generation (`src/llm/reporter.py`)
+2. **Agno** — knowledge base chatbot (`src/llm/agent.py`)
+3. **FastAPI** — REST endpoints (`src/api/main.py`)
 
 ---
 

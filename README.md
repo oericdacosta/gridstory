@@ -1,377 +1,284 @@
-# PitWall AI
+# gridstory
 
-**Pipeline completo de análise de corridas de Fórmula 1 usando FastF1, NumPy, Pandas e SciPy.**
+> F1 race data pipeline — from raw telemetry to structured JSON events ready for LLM-powered narrative generation.
 
-## Sobre o Projeto
+![Python](https://img.shields.io/badge/python-3.12%2B-blue)
+![uv](https://img.shields.io/badge/package%20manager-uv-violet)
+![Status](https://img.shields.io/badge/status-active%20development-orange)
 
-PitWall AI é um pipeline de engenharia de dados para análise de corridas de Fórmula 1 que:
+gridstory is a two-module system for Formula 1 race analysis:
 
-1. **Extrai TODOS os dados** de uma corrida usando FastF1
-2. **Pré-processa TUDO** com NumPy, Pandas e SciPy
-3. **Prepara dados estruturados** prontos para análise ML
+- **Module 1 (complete):** Data engineering + ML pipeline that processes a race and outputs three validated JSON files
+- **Module 2 (planned):** LLM layer that turns those JSONs into a journalistic report and an interactive chatbot
 
-**Pipeline atual (implementado):**
-- ✅ Extração completa de dados (laps, telemetry, race_control, weather, results)
-- ✅ Pré-processamento com SciPy (interpolação, signal processing, features estatísticas)
-- ✅ Machine Learning com Scikit-learn (clustering, anomaly detection, pipeline)
-- 🚧 Exportação estruturada (próxima fase: Pydantic)
-- 🚧 Geração de narrativas com LLM (fase futura: DSPY, Agno, FastAPI)
+```
+FastF1 API → Extract → Preprocess → ML → Pydantic → timeline.json
+                                                    → race_summary.json
+                                                    → driver_profiles.json
+                                                          ↓
+                                               DSPY → race_report.md
+                                               Agno → chat endpoint
+                                             FastAPI → REST API
+```
 
-## Status do Desenvolvimento
+---
 
-| Módulo | Status | Descrição |
-|--------|--------|-----------|
-| Extração de Dados | ✅ Implementado | FastF1, Pandas, NumPy |
-| Pré-processamento | ✅ Implementado | SciPy (interpolação, signal processing, features) + Scikit-learn (imputação, encoding, escalonamento) |
-| Machine Learning | ✅ Implementado | Scikit-learn (K-Means, DBSCAN, Isolation Forest) com métricas por piloto |
-| Tracking ML | ✅ Implementado | MLFlow (métricas, parâmetros, artefatos CSV) |
-| Change Point Detection | ✅ Implementado | Ruptures/PELT (detecção de tire cliffs por stint) |
-| Validação | 🚧 Próxima Fase | Pydantic |
-| API | 📅 Planejado | FastAPI |
-| LLM | 📅 Planejado | DSPY, Agno |
+## Features
 
-## Instalação
+**Module 1 — implemented**
 
-### Pré-requisitos
+- Extracts all race data via FastF1: laps, telemetry, race control, weather, results
+- Detects tire degradation cliffs with Ruptures/PELT change point detection
+- Classifies lap clusters (push / base / degraded) with K-Means
+- Identifies anomalous laps with Isolation Forest, cross-referenced with Safety Car events
+- Detects undercut maneuvers from pit timing and position data
+- Outputs three Pydantic-validated JSONs — the only interface between ML and LLM:
+  - `timeline.json` — chronological race events (safety car, driver error, tire dropoff, undercut, penalty)
+  - `race_summary.json` — winner, podium, DNFs, safety car count, weather
+  - `driver_profiles.json` — per-driver: compounds, push/base/degraded %, tire cliffs, anomalies
+- MLflow tracking for all ML experiments (config-driven)
 
-- Python 3.12+
-- [uv](https://github.com/astral-sh/uv) (gerenciador de pacotes)
+**Module 2 — planned**
 
-### Setup
+- DSPY journalistic report generation from the three JSONs
+- Agno knowledge base chatbot ("Who executed the best undercut?")
+- FastAPI endpoints: `GET /race/{year}/{round}/report` and `POST /race/{year}/{round}/chat`
+
+---
+
+## Quick Start
 
 ```bash
-# Clone o repositório
-git clone https://github.com/seu-usuario/pitwall-ai.git
-cd pitwall-ai
-
-# Instale as dependências
+# Clone and install
+git clone https://github.com/seu-usuario/gridstory.git
+cd gridstory
 uv sync
-```
 
-## Uso Rápido
-
-### 1. Pipeline Completo (Extração + Pré-processamento + ML)
-
-```bash
-# Um único comando que faz TUDO
+# Run the full pipeline for 2025 Round 1 (Australian GP)
 uv run python cli/pipeline.py 2025 1
-
-# Com polling (aguardar disponibilidade dos dados)
-uv run python cli/pipeline.py 2025 1 --polling
-
-# Mostrar amostras dos dados processados
-uv run python cli/pipeline.py 2025 1 --show-sample
 ```
 
-**O que este comando faz:**
-1. ✅ Extrai TODOS os dados da corrida (laps, telemetry, race_control, weather, results)
-2. ✅ Pré-processa TODOS os dados (features, normalização, limpeza)
-3. ✅ Executa ML (clustering K-Means, detecção de anomalias Isolation Forest)
-4. ✅ Salva dados brutos em `data/raw/races/YEAR/round_XX/`
-5. ✅ Salva dados processados em `data/processed/races/YEAR/round_XX/`
-6. ✅ Salva resultados de ML em `data/ml/races/YEAR/round_XX/`
-
-### 2. MLFlow (tracking automático)
-
-O tracking MLFlow é **config-driven** — habilitado via `config.yaml`:
-
-```yaml
-mlflow:
-  enabled: true  # false para desabilitar
-```
-
-```bash
-# Ver resultados no MLFlow UI
-uv run mlflow ui
-# Acesse: http://localhost:5000
-```
-
-### Documentação Completa
-
-- [USAGE.md](USAGE.md) - Guia de uso do pipeline completo
-- [PREPROCESSING.md](PREPROCESSING.md) - Guia completo de pré-processamento (todos os dados)
-- [docs/configuration.md](docs/configuration.md) - **Guia de configuração** (config.yaml)
-- [src/extraction/README.md](src/extraction/README.md) - Documentação do módulo de extração
-- [src/preprocessing/README.md](src/preprocessing/README.md) - Documentação do módulo de pré-processamento
-- [src/ml/README.md](src/ml/README.md) - Documentação do módulo de Machine Learning (Scikit-learn)
-- [cli/README.md](cli/README.md) - Documentação dos CLIs
-
-## Estrutura do Projeto
-
-```
-pitwall-ai/
-├── cli/                           # Scripts de linha de comando
-│   ├── pipeline.py                # Pipeline completo (único ponto de entrada)
-│   ├── pipeline_steps/            # Módulos internos do pipeline
-│   │   ├── extraction.py          # Fase 1: Extração
-│   │   ├── preprocessing.py       # Fase 2: Pré-processamento
-│   │   ├── ml.py                  # Fase 3: Machine Learning
-│   │   └── reporting.py           # Formatação de saídas
-│   ├── ruptures_analysis.py       # Calibração de penalty (penalty-search)
-│   └── list_data.py               # Utilitário: lista dados disponíveis
-├── src/                           # Código-fonte
-│   ├── extraction/                # Extração de dados (✅ implementado)
-│   ├── preprocessing/             # Pré-processamento (✅ implementado)
-│   │   ├── interpolation.py       # Sincronização de telemetria
-│   │   ├── signal_processing.py   # Tratamento de sinal
-│   │   └── feature_engineering/   # Engenharia de features (modular)
-│   │       ├── statistical.py     # Features estatísticas
-│   │       ├── domain.py          # Pré-processamento F1
-│   │       └── ml_prep.py         # Preparação para ML
-│   ├── ml/                        # Machine Learning (✅ implementado)
-│   ├── models/                    # Modelos Pydantic (planejado)
-│   ├── api/                       # FastAPI (planejado)
-│   ├── llm/                       # Integração LLM (planejado)
-│   └── utils/                     # Utilitários e configuração
-├── tests/                         # Testes automatizados
-├── examples/                      # Exemplos de uso
-├── data/                          # Dados (não versionado)
-│   ├── raw/races/                 # Dados brutos extraídos
-│   ├── processed/races/           # Dados pré-processados
-│   └── ml/races/                  # Resultados de Machine Learning
-├── docs/                          # Documentação
-├── notebooks/                     # Jupyter notebooks
-├── config.yaml                    # ⚙️ Configuração centralizada
-└── main.py                        # Entry point (futuro: servidor API)
-```
-
-### Configuração Centralizada
-
-Todos os parâmetros do pipeline estão centralizados em `config.yaml`:
-- **Pré-processamento**: num_points, kernel_size, thresholds, etc.
-- **Machine Learning**: random_state, contamination, k_range, etc.
-- **Diretórios**: Estrutura de dados configurável
-
-Edite `config.yaml` para customizar o comportamento do pipeline sem modificar código.
-
-### Estrutura de Dados Gerada
+Output:
 
 ```
 data/
-├── raw/races/YEAR/round_XX/              # FASE 1: Extração
-│   ├── laps.parquet
-│   ├── telemetry/*.parquet
-│   ├── race_control.parquet
-│   ├── weather.parquet
-│   ├── results.parquet
-│   └── metadata.json
-│
-├── processed/races/YEAR/round_XX/        # FASE 2: Pré-processamento
-│   ├── laps_processed.parquet
-│   ├── telemetry/*_processed.parquet
-│   ├── race_control_processed.parquet
-│   ├── weather_processed.parquet
-│   └── results_processed.parquet
-│
-└── ml/races/YEAR/round_XX/               # FASE 3: Machine Learning
-    ├── laps_clustered.parquet            # K-Means: ritmos (push/base/degraded)
-    ├── laps_anomalies.parquet            # Isolation Forest: voltas anômalas
-    ├── anomalies_summary.parquet         # Sumário de anomalias por piloto
-    ├── laps_changepoints.parquet         # PELT: regimes de degradação por stint
-    ├── tire_cliffs.parquet               # Tire cliffs detectados por (Driver, Stint)
-    └── tire_cliffs_summary.parquet       # Sumário de cliffs por piloto
+├── raw/races/2025/round_01/          # Phase 1: raw Parquet files
+├── processed/races/2025/round_01/    # Phase 2: engineered features
+├── ml/races/2025/round_01/           # Phase 3: ML outputs
+└── timelines/races/2025/round_01/    # Phase 4: Pydantic-validated JSONs
+    ├── timeline.json
+    ├── race_summary.json
+    └── driver_profiles.json
 ```
 
-## Funcionalidades
+---
 
-### 1. Extração Completa de Dados (✅ Implementado)
+## Installation
 
-**SEMPRE extrai TODOS os dados de uma corrida:**
-
-- **Laps**: Tempos por setor, pit stops, compostos de pneu, desgaste de pneu
-- **Telemetria**: Velocidade, RPM, aceleração, freio, DRS, marchas (TODOS os pilotos)
-- **Race Control**: Safety Car, bandeiras, penalidades, investigações
-- **Weather**: Temperatura do ar/pista, chuva, vento, pressão, umidade
-- **Results**: Classificação final, grid de largada, pontos, status
-
-**Formato:** Parquet (eficiente e compacto)
-**Organização:** `data/raw/races/YEAR/round_XX/`
-
-### 2. Pré-processamento Completo (✅ Implementado)
-
-**Transforma TODOS os dados brutos em features prontas para análise:**
-
-#### **A. Laps (Voltas e Estratégia)**
-- Features estatísticas (Z-score, outliers)
-- Taxa de degradação de pneus (regressão linear)
-- Estatísticas descritivas por grupo (piloto, composto)
-
-#### **B. Telemetria (Dados do Carro)**
-- Sincronização em grid comum (`scipy.interpolate`)
-- Remoção de ruído (`scipy.signal`)
-- Cálculo de derivadas (aceleração, jerk)
-- Detecção e correção de outliers
-
-#### **C. Race Control (Eventos da Corrida)**
-- Normalização de timestamps
-- Indicadores binários (safety car, bandeiras, penalidades)
-- Categorização de eventos
-- Severidade do evento (info/warning/critical)
-
-#### **D. Weather (Condições Meteorológicas)**
-- Interpolação de valores faltantes
-- Normalização de temperaturas
-- Tendências climáticas (temperatura subindo/descendo)
-- Detecção de mudanças bruscas
-
-#### **E. Results (Classificação Final)**
-- Mudança de posições (grid → final)
-- Status de finalização (finished/DNF)
-- Categorização de DNF (collision/mechanical/electrical)
-- Score de desempenho relativo
-
-#### **F. Pré-processamento para Scikit-learn**
-- **Imputação**: Preenche valores faltantes (SimpleImputer, KNNImputer)
-- **Encoding**: Converte categorias em números (OneHotEncoder para Compound, TrackStatus)
-- **Escalonamento**: Normaliza features (StandardScaler, RobustScaler)
-
-**Por quê:** Algoritmos de ML baseados em distância (K-Means, DBSCAN, Isolation Forest) requerem dados completos, numéricos e na mesma escala.
-
-**Formato:** Parquet processado
-**Organização:** `data/processed/races/YEAR/round_XX/`
-
-### 3. Machine Learning com Scikit-learn (✅ Implementado)
-
-**Análise não supervisionada para identificar padrões e eventos:**
-
-#### **A. Clusterização (Análise de Ritmo)**
-- **K-Means**: Agrupa voltas em ritmos (Puro, Gestão de Pneus, Tráfego)
-- **DBSCAN**: Identifica ritmo consistente e detecta ruído automaticamente
-- **Aplicações**: Identificar mudanças de estratégia, filtrar tráfego
-
-#### **B. Detecção de Anomalias**
-- **Isolation Forest**: Detecta eventos raros e outliers
-- **Aplicações**: Erros de piloto, quebras mecânicas, voltas excepcionais
-- **Saída**: Flags binários + scores de anomalia
-
-#### **C. Change Point Detection (Ruptures/PELT)**
-- **PELT**: Detecta tire cliffs (mudanças de regime de degradação) dentro de cada stint
-- **Validação**: Confirma cliffs via slope positivo de degradação (evita falsos positivos)
-- **Saída**: `tire_cliffs.parquet` com `cliff_lap`, `cliff_delta_magnitude`, `cliff_validated`
-
-#### **D. Pipeline Integrado**
-- **ColumnTransformer**: Pré-processamento em um objeto único
-- **Pipeline Scikit-learn**: Encapsula pré-proc + ML
-- **run_race_analysis()**: Função de alto nível para análise completa (clustering + anomaly + changepoint)
-
-**Formato:** DataFrames com labels e scores
-**Documentação:** [src/ml/README.md](src/ml/README.md)
-
-## Arquitetura
-
-O projeto é um **pipeline de engenharia de dados** com fases bem definidas:
-
-### **FASE 1: Extração (✅ Implementado)**
-```
-FastF1 API → Extração Completa → Parquet (data/raw/)
-```
-- Laps, Telemetry, Race Control, Weather, Results
-- Cache local do FastF1 para eficiência
-- Organização hierárquica por temporada/rodada
-
-### **FASE 2: Pré-processamento (✅ Implementado)**
-```
-Dados Brutos → NumPy/Pandas/SciPy/Scikit-learn → Parquet (data/processed/)
-```
-- **Laps:** Features estatísticas, degradação de pneus
-- **Telemetria:** Sincronização, limpeza, derivadas
-- **Race Control:** Eventos estruturados, severidade
-- **Weather:** Tendências, mudanças bruscas
-- **Results:** Desempenho relativo, classificação
-- **Para ML:** Imputação, Encoding, Escalonamento
-
-### **FASE 3: Machine Learning (✅ Implementado)**
-```
-Dados Processados → Scikit-learn + Ruptures → DataFrames com Labels/Scores
-```
-- **K-Means**: Agrupamento de voltas por ritmo (push / base / degraded)
-- **DBSCAN**: Detecção de clusters + ruído (análise complementar)
-- **Isolation Forest**: Detecção de anomalias (eventos raros)
-- **PELT (Ruptures)**: Change point detection — tire cliffs por stint
-- **MLFlow**: Tracking config-driven (habilitado via `mlflow.enabled` no config.yaml)
-
-### **FASE 4: Exportação Estruturada (🚧 Próxima Fase)**
-```
-DataFrames → Pydantic → JSON Estruturado
-```
-- Pydantic: Validação e estruturação de eventos
-- Schema de eventos (clusters, anomalias, mudanças de ritmo)
-- Exportação para consumo downstream
-
-### **FASE 5: LLM & API (🚧 Planejado)**
-```
-Eventos (JSON) → DSPY/Agno → Narrativas & Chat
-```
-- DSPY: Geração de relatórios narrativos
-- Agno: Chatbot interativo com contexto
-- FastAPI: API REST para consultas
-- MLflow: Observabilidade e tracing
-
-## Stack Tecnológica
-
-| Camada | Tecnologia | Status | Documentação |
-|--------|-----------|--------|--------------|
-| Extração | FastF1, Pandas, NumPy | ✅ Implementado | [src/extraction/](src/extraction/README.md) |
-| Armazenamento | Parquet (PyArrow) | ✅ Implementado | - |
-| Pré-processamento | SciPy (interpolate, signal, stats) | ✅ Implementado | [src/preprocessing/](src/preprocessing/README.md) |
-| Pré-proc ML | Scikit-learn (imputers, encoders, scalers) | ✅ Implementado | [PREPROCESSING.md](PREPROCESSING.md) |
-| Machine Learning | Scikit-learn (KMeans, DBSCAN, IsolationForest) | ✅ Implementado | [src/ml/](src/ml/README.md) |
-| Change Point Detection | Ruptures/PELT (tire cliffs) | ✅ Implementado | [src/ml/](src/ml/README.md) |
-| Tracking ML | MLFlow (métricas, parâmetros, artefatos) | ✅ Implementado | [MLFLOW_SETUP.md](MLFLOW_SETUP.md) |
-| Validação | Pydantic | 🚧 Próxima Fase | - |
-| API | FastAPI | 📅 Planejado | - |
-| LLM | DSPY, Agno | 📅 Planejado | - |
-
-### Legenda
-- ✅ Implementado e documentado
-- 🚧 Próxima fase (segundo planejamento)
-- 📅 Planejado (Módulo 2)
-
-## Documentação
-
-### Guias de Uso
-- [USAGE.md](USAGE.md) - Guia de uso do pipeline completo
-- [PREPROCESSING.md](PREPROCESSING.md) - Guia completo de pré-processamento (todos os 5 tipos de dados + Scikit-learn)
-
-### Documentação dos Módulos
-- [src/extraction/README.md](src/extraction/README.md) - Módulo de extração
-- [src/preprocessing/README.md](src/preprocessing/README.md) - Módulo de pré-processamento
-- [src/ml/README.md](src/ml/README.md) - Módulo de Machine Learning (Clustering + Anomaly Detection)
-- [cli/README.md](cli/README.md) - Ferramentas CLI
-
-### Documentação Técnica
-- [docs/](docs/) - Documentação detalhada (arquitetura, API)
-
-## Testes
+**Requirements:** Python 3.12+, [uv](https://github.com/astral-sh/uv)
 
 ```bash
-# Executar testes de extração
-uv run python tests/test_extraction/test_basic.py
-
-# Executar testes de pré-processamento (23 testes)
-uv run pytest tests/preprocessing/ -v
-
-# Rodar exemplos práticos
-uv run python examples/preprocessing_example.py
+git clone https://github.com/seu-usuario/gridstory.git
+cd gridstory
+uv sync
 ```
 
-**Cobertura de Testes:**
-- ✅ Extração: Testado manualmente
-- ✅ Pré-processamento: 23 testes unitários (100% passando)
-- ⏳ ML Pipeline: Planejado
-- ⏳ API: Planejado
+---
 
-## Configuração
+## Usage
 
-O arquivo `config.yaml` centraliza todas as configurações do projeto:
-- Diretórios de dados
-- Parâmetros de extração
-- Configurações de ML
-- Configurações de API e LLM
+### Pipeline (single command)
 
-## Contribuindo
+```bash
+# Full pipeline — extract, preprocess, ML, generate JSONs
+uv run python cli/pipeline.py 2025 1
 
-Contribuições são bem-vindas! Por favor:
-- Reporte bugs através das issues
-- Sugira novas funcionalidades
-- Envie pull requests
+# Use polling for very recent races (data may not be available yet)
+uv run python cli/pipeline.py 2025 1 --polling
+
+# Print data samples at each phase
+uv run python cli/pipeline.py 2025 1 --show-sample
+```
+
+### MLflow UI
+
+```bash
+# View experiment tracking (clustering metrics, anomaly rates, PELT penalty runs)
+uv run mlflow ui
+# http://localhost:5000
+```
+
+### PELT penalty calibration
+
+```bash
+# Run penalty search and compare in MLflow UI
+uv run python cli/ruptures_analysis.py --year 2025 --round 1 --penalty-search --mlflow
+
+# After choosing the best value, set ml.degradation.penalty in config.yaml
+```
+
+---
+
+## Output JSONs
+
+The three files in `data/timelines/races/YEAR/round_XX/` are the single source of truth for Module 2.
+
+### `timeline.json`
+
+Chronological list of significant race events. Every field is narrative-ready — no internal ML metrics.
+
+```json
+[
+  { "lap": 1,  "type": "safety_car",       "deployed_on_lap": 1, "duration_laps": 6 },
+  { "lap": 37, "type": "driver_error",     "driver": "LEC" },
+  { "lap": 38, "type": "tire_dropoff",     "driver": "ALB", "lap_time_drop_seconds": 1.39, "cliff_validated": true },
+  { "lap": 43, "type": "penalty",          "driver": "BOR", "reason": "Unsafe Release" },
+  { "lap": 47, "type": "undercut",         "winner": "NOR", "loser": "VER", "time_gained_seconds": 0.803 }
+]
+```
+
+Event types: `safety_car` · `driver_error` · `external_incident` · `tire_dropoff` · `undercut` · `penalty`
+
+### `race_summary.json`
+
+```json
+{
+  "year": 2025, "round": 1, "total_laps": 57,
+  "winner": "NOR", "fastest_lap_driver": "NOR", "fastest_lap_time": 82.167,
+  "podium": [{ "position": 1, "driver": "NOR", "team": "McLaren", "gap_to_leader": "0.000" }],
+  "dnfs": [{ "driver": "LAW", "on_lap": 47 }],
+  "safety_car_count": 3,
+  "weather": { "condition": "mixed", "air_temp_avg_c": 15.7, "had_rainfall": true }
+}
+```
+
+### `driver_profiles.json`
+
+```json
+[
+  {
+    "driver": "NOR", "team": "McLaren",
+    "final_position": 1, "grid_position": 1, "positions_gained": 0, "points": 25.0,
+    "push_pct": 0.067, "base_pct": 0.844, "degraded_pct": 0.089,
+    "compounds_used": [{ "compound": "INTERMEDIATE", "laps": 47 }, { "compound": "HARD", "laps": 10 }],
+    "had_tire_cliff": true, "cliff_count": 1, "anomaly_count": 3
+  }
+]
+```
+
+---
+
+## Architecture
+
+```
+gridstory/
+├── cli/
+│   ├── pipeline.py                  # Single entry point
+│   ├── pipeline_steps/
+│   │   ├── extraction.py            # Phase 1
+│   │   ├── preprocessing.py         # Phase 2
+│   │   ├── ml.py                    # Phase 3
+│   │   ├── events.py                # Phase 4 — generates the 3 JSONs
+│   │   └── reporting.py
+│   ├── ruptures_analysis.py         # PELT penalty calibration tool
+│   └── list_data.py
+│
+├── src/
+│   ├── extraction/                  # FastF1 ETL
+│   ├── preprocessing/               # SciPy signal processing + feature engineering
+│   ├── ml/
+│   │   ├── pipeline.py              # run_race_analysis()
+│   │   ├── clustering.py            # K-Means, DBSCAN
+│   │   ├── anomaly_detection.py     # Isolation Forest
+│   │   ├── anomaly_classification.py# Z-score + race control cross-reference
+│   │   ├── change_point.py          # Ruptures/PELT tire cliffs
+│   │   ├── strategy.py              # detect_undercuts()
+│   │   ├── timeline.py              # build_race_timeline()
+│   │   ├── race_summary_builder.py  # build_race_summary()
+│   │   ├── driver_profiles_builder.py # build_driver_profiles()
+│   │   ├── metrics.py
+│   │   └── tracking.py              # MLflow integration
+│   ├── models/                      # Pydantic contracts (ML ↔ LLM firewall)
+│   │   ├── race_events.py           # RaceTimeline + all event types
+│   │   ├── race_summary.py          # RaceSummary, WeatherSummary, PodiumEntry
+│   │   └── driver_profile.py        # DriverProfile, CompoundUsage
+│   ├── llm/                         # [planned] DSPY + Agno
+│   ├── api/                         # [planned] FastAPI
+│   └── utils/
+│
+├── data/                            # gitignored
+│   ├── raw/races/
+│   ├── processed/races/
+│   ├── ml/races/
+│   └── timelines/races/
+│
+├── config.yaml                      # All pipeline parameters
+└── pyproject.toml
+```
+
+---
+
+## Tech Stack
+
+| Layer | Tools | Status |
+|---|---|---|
+| Data extraction | FastF1, Pandas, NumPy | ✅ Done |
+| Storage | Parquet (PyArrow) | ✅ Done |
+| Preprocessing | SciPy (interpolate, signal, stats) | ✅ Done |
+| ML — clustering | Scikit-learn K-Means, DBSCAN | ✅ Done |
+| ML — anomaly detection | Scikit-learn Isolation Forest | ✅ Done |
+| ML — change point | Ruptures/PELT | ✅ Done |
+| ML tracking | MLflow | ✅ Done |
+| Data contracts | Pydantic v2 | ✅ Done |
+| Report generation | DSPY | 📅 Planned |
+| Chatbot | Agno | 📅 Planned |
+| API | FastAPI | 📅 Planned |
+
+---
+
+## Configuration
+
+All pipeline parameters live in `config.yaml`:
+
+```yaml
+mlflow:
+  enabled: true          # set to false to skip tracking
+
+ml:
+  degradation:
+    penalty: 3           # PELT sensitivity — calibrate with ruptures_analysis.py
+    min_cliff_magnitude: 0.3
+```
+
+See [docs/configuration.md](docs/configuration.md) for all options.
+
+---
+
+## Project Status
+
+| Phase | Description | Status |
+|---|---|---|
+| 1 — Extraction | FastF1 → Parquet | ✅ Complete |
+| 2 — Preprocessing | SciPy feature engineering | ✅ Complete |
+| 3 — Machine Learning | Clustering, anomaly detection, tire cliffs | ✅ Complete |
+| 4 — Pydantic contracts | Validate ML outputs → 3 JSONs | ✅ Complete |
+| 5 — LLM report | DSPY journalistic report | 📅 Next |
+| 6 — LLM chatbot | Agno knowledge base Q&A | 📅 Next |
+| 7 — API | FastAPI endpoints | 📅 Next |
+
+---
+
+## Documentation
+
+- [USAGE.md](USAGE.md) — detailed usage guide
+- [ARCHITECTURE.md](ARCHITECTURE.md) — architecture and data flow
+- [CHANGELOG.md](CHANGELOG.md) — version history
+- [cli/README.md](cli/README.md) — CLI reference
+- [src/ml/README.md](src/ml/README.md) — ML module reference
+- [docs/configuration.md](docs/configuration.md) — config.yaml reference
+
+---
+
+## Contributing
+
+Issues and pull requests are welcome.
