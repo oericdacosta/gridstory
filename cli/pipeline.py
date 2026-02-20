@@ -5,8 +5,8 @@ PitWall AI - Pipeline Completo End-to-End.
 Pipeline unificado que executa:
 1. Extração completa de dados da corrida (laps, telemetry, race_control, weather, results)
 2. Pré-processamento de TODOS os dados com NumPy, Pandas e SciPy
-3. Machine Learning com Scikit-learn (clustering, anomaly detection)
-4. Salvamento de todos os dados processados
+3. Machine Learning com Scikit-learn (clustering, anomaly detection) + Ruptures (tire cliffs)
+4. Eventos Estruturados: classificação de causas, undercuts e geração de timeline.json (Pydantic)
 
 Exemplo de uso:
     # Pipeline completo para uma corrida
@@ -32,6 +32,7 @@ from cli.pipeline_steps.reporting import print_pipeline_header, print_final_summ
 from cli.pipeline_steps.extraction import run_extraction_phase
 from cli.pipeline_steps.preprocessing import run_preprocessing_phase
 from cli.pipeline_steps.ml import run_ml_phase
+from cli.pipeline_steps.events import run_events_phase
 
 
 def run_complete_pipeline(
@@ -41,7 +42,7 @@ def run_complete_pipeline(
     show_sample: bool = False,
 ):
     """
-    Executa pipeline completo: extração + pré-processamento + ML.
+    Executa pipeline completo: extração + pré-processamento + ML + eventos estruturados.
 
     Args:
         year: Ano da temporada
@@ -79,6 +80,16 @@ def run_complete_pipeline(
         year=year,
         round_num=round_num,
         show_sample=show_sample,
+    )
+
+    # ========================================================================
+    # FASE 4: EVENTOS ESTRUTURADOS (PYDANTIC)
+    # ========================================================================
+    run_events_phase(
+        ml_dir=ml_dir,
+        processed_dir=processed_dir,
+        year=year,
+        round_num=round_num,
     )
 
     # ========================================================================

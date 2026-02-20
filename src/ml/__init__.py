@@ -11,7 +11,12 @@ Pipeline não supervisionado para análise de corridas de F1:
 
 from .clustering import cluster_laps_kmeans, cluster_laps_dbscan, find_optimal_k
 from .anomaly_detection import detect_anomalies_isolation_forest, summarize_anomalies
+from .anomaly_classification import classify_anomaly_cause
 from .change_point import detect_tire_changepoints, summarize_cliffs
+from .strategy import detect_undercuts
+from .timeline import build_race_timeline
+from .race_summary_builder import build_race_summary
+from .driver_profiles_builder import build_driver_profiles
 from .pipeline import (
     create_ml_pipeline,
     run_race_analysis,
@@ -46,9 +51,18 @@ __all__ = [
     # Anomaly Detection
     "detect_anomalies_isolation_forest",
     "summarize_anomalies",
+    # Anomaly Classification
+    "classify_anomaly_cause",
     # Change Point Detection
     "detect_tire_changepoints",
     "summarize_cliffs",
+    # Strategy
+    "detect_undercuts",
+    # Timeline
+    "build_race_timeline",
+    # Builders
+    "build_race_summary",
+    "build_driver_profiles",
     # Pipeline
     "create_ml_pipeline",
     "run_race_analysis",

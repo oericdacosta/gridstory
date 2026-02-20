@@ -10,6 +10,7 @@ dependencies = [
     "numpy>=2.4.2",
     "pandas>=2.3.3",
     "pyarrow>=23.0.0",
+    "pydantic>=2.12.5",
     "pyyaml>=6.0.3",
     "ruptures>=1.1.7",
     "scikit-learn>=1.8.0",
