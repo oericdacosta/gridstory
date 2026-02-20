@@ -399,10 +399,81 @@ def calculate_per_driver_clustering_metrics(
     }
 
 
+def calculate_changepoint_metrics(
+    changepoints_df: pd.DataFrame,
+) -> dict[str, float]:
+    """
+    Calcula métricas agregadas de detecção de change points.
+
+    Args:
+        changepoints_df: DataFrame com resultados por (Driver, Stint),
+                         output de detect_tire_changepoints()
+
+    Returns:
+        Dicionário com métricas:
+        - n_stints_analyzed: Total de stints analisados
+        - n_cliffs_detected: Número de stints com cliff detectado
+        - cliff_rate: Taxa de stints com cliff (%)
+        - cliff_validated_rate: Taxa de cliffs validados pelo anomaly_score (%)
+        - mean_cliff_magnitude: Magnitude média do cliff (LapTime_delta)
+        - mean_laps_before_cliff: Média de voltas antes do primeiro cliff
+
+    Example:
+        >>> metrics = calculate_changepoint_metrics(changepoints_df)
+        >>> print(f"Cliff rate: {metrics['cliff_rate']:.1f}%")
+    """
+    if changepoints_df.empty:
+        return {
+            'n_stints_analyzed': 0,
+            'n_cliffs_detected': 0,
+            'cliff_rate': 0.0,
+            'cliff_validated_rate': 0.0,
+            'mean_cliff_magnitude': 0.0,
+            'mean_laps_before_cliff': 0.0,
+        }
+
+    n_stints = len(changepoints_df)
+    cliffs = changepoints_df[changepoints_df['has_cliff'] == True]
+    n_cliffs = len(cliffs)
+    cliff_rate = 100.0 * n_cliffs / n_stints if n_stints > 0 else 0.0
+
+    # Validação: cliffs validados pelo anomaly_score
+    if 'cliff_validated' in cliffs.columns:
+        n_validated = int(cliffs['cliff_validated'].sum())
+        cliff_validated_rate = 100.0 * n_validated / n_cliffs if n_cliffs > 0 else 0.0
+    else:
+        cliff_validated_rate = 0.0
+
+    # Magnitude média do cliff
+    if 'cliff_delta_magnitude' in cliffs.columns:
+        mean_magnitude = float(cliffs['cliff_delta_magnitude'].abs().mean()) if n_cliffs > 0 else 0.0
+    else:
+        mean_magnitude = 0.0
+
+    # Média de voltas antes do primeiro cliff
+    if 'cliff_lap' in changepoints_df.columns and 'n_laps_in_stint' in changepoints_df.columns:
+        # cliff_lap é o LapNumber absoluto; usar laps_before_cliff se disponível
+        if 'laps_before_cliff' in changepoints_df.columns:
+            mean_laps_before = float(cliffs['laps_before_cliff'].mean()) if n_cliffs > 0 else 0.0
+        else:
+            mean_laps_before = 0.0
+    else:
+        mean_laps_before = 0.0
+
+    return {
+        'n_stints_analyzed': int(n_stints),
+        'n_cliffs_detected': int(n_cliffs),
+        'cliff_rate': float(cliff_rate),
+        'cliff_validated_rate': float(cliff_validated_rate),
+        'mean_cliff_magnitude': float(mean_magnitude),
+        'mean_laps_before_cliff': float(mean_laps_before),
+    }
+
+
 def evaluate_clustering_quality(
     metrics: dict[str, float],
-    silhouette_threshold: float = 0.5,
-    davies_bouldin_threshold: float = 1.0,
+    silhouette_threshold: float | None = None,
+    davies_bouldin_threshold: float | None = None,
 ) -> dict[str, str | bool]:
     """
     Avalia a qualidade do clustering com base nas métricas calculadas.
@@ -425,6 +496,15 @@ def evaluate_clustering_quality(
         >>> print(f"Qualidade: {evaluation['quality']}")
         >>> print(f"Recomendação: {evaluation['recommendation']}")
     """
+    # Ler thresholds do config se não fornecidos explicitamente
+    if silhouette_threshold is None or davies_bouldin_threshold is None:
+        from src.utils.config import get_config as _get_config
+        _cfg = _get_config()
+        if silhouette_threshold is None:
+            silhouette_threshold = _cfg.get_silhouette_threshold()
+        if davies_bouldin_threshold is None:
+            davies_bouldin_threshold = _cfg.get_davies_bouldin_threshold()
+
     silhouette = metrics.get('silhouette_score')
     davies_bouldin = metrics.get('davies_bouldin_score')
 

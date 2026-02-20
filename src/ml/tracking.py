@@ -6,6 +6,8 @@ de clustering e detecção de anomalias.
 """
 
 import os
+import shutil
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -16,6 +18,7 @@ import pandas as pd
 from .metrics import (
     calculate_clustering_metrics,
     calculate_anomaly_metrics,
+    calculate_changepoint_metrics,
     evaluate_clustering_quality,
 )
 
@@ -189,12 +192,69 @@ def track_anomaly_detection_run(
         return run.info.run_id
 
 
+def track_changepoint_run(
+    run_name: str,
+    changepoints_df: pd.DataFrame,
+    params: dict[str, Any],
+    additional_metrics: dict[str, float] | None = None,
+    artifacts: dict[str, pd.DataFrame] | None = None,
+    tags: dict[str, str] | None = None,
+) -> str:
+    """
+    Tracka um run de detecção de change points com MLFlow.
+
+    Args:
+        run_name: Nome descritivo do run (ex: "PELT_pen3_l2_2025_R01")
+        changepoints_df: DataFrame com resultados por stint (output de detect_tire_changepoints)
+        params: Parâmetros do algoritmo (ex: {"algorithm": "Pelt", "model": "l2", "penalty": 3})
+        additional_metrics: Métricas adicionais para logar
+        artifacts: DataFrames para salvar como artefatos (chave = nome do arquivo)
+        tags: Tags para organizar runs
+
+    Returns:
+        ID do run criado
+
+    Example:
+        >>> run_id = track_changepoint_run(
+        ...     run_name="PELT_Bahrain_2025",
+        ...     changepoints_df=cliffs_df,
+        ...     params={"algorithm": "Pelt", "model": "l2", "penalty": 3},
+        ...     tags={"event": "Bahrain GP"}
+        ... )
+    """
+    with mlflow.start_run(run_name=run_name) as run:
+        # Logar parâmetros
+        mlflow.log_params(params)
+
+        # Logar tags
+        if tags:
+            mlflow.set_tags(tags)
+
+        # Calcular e logar métricas de change point detection
+        cp_metrics = calculate_changepoint_metrics(changepoints_df)
+        for metric_name, metric_value in cp_metrics.items():
+            if isinstance(metric_value, (int, float)):
+                mlflow.log_metric(metric_name, metric_value)
+
+        # Logar métricas adicionais
+        if additional_metrics:
+            mlflow.log_metrics(additional_metrics)
+
+        # Salvar artefatos (DataFrames)
+        if artifacts:
+            for filename, df in artifacts.items():
+                log_dataframe_artifact(df, filename, artifact_path="results")
+
+        return run.info.run_id
+
+
 def track_pipeline_run(
     run_name: str,
     year: int,
     round_number: int,
     clustering_results: dict | None = None,
     anomaly_results: dict | None = None,
+    changepoint_results: dict | None = None,
     params: dict[str, Any] | None = None,
     tags: dict[str, str] | None = None,
     artifacts: dict[str, pd.DataFrame] | None = None,
@@ -211,6 +271,7 @@ def track_pipeline_run(
         round_number: Número da rodada
         clustering_results: Resultados de clustering (opcional)
         anomaly_results: Resultados de anomaly detection (opcional)
+        changepoint_results: Resultados de change point detection (opcional)
         params: Parâmetros gerais do pipeline
         tags: Tags para organizar
         artifacts: DataFrames para salvar como artefatos CSV.
@@ -255,6 +316,12 @@ def track_pipeline_run(
                 if isinstance(value, (int, float)):
                     mlflow.log_metric(f"anomaly_{key}", value)
 
+        # Logar resultados de change point detection
+        if changepoint_results:
+            for key, value in changepoint_results.items():
+                if isinstance(value, (int, float)):
+                    mlflow.log_metric(f"changepoint_{key}", value)
+
         # Salvar DataFrames como artefatos CSV (visíveis na aba Artifacts do MLFlow UI)
         if artifacts:
             for filename, df in artifacts.items():
@@ -284,24 +351,22 @@ def log_dataframe_artifact(
         ...         artifact_path="results"
         ...     )
     """
-    # Criar diretório temporário
-    temp_dir = Path("./tmp_mlflow_artifacts")
-    temp_dir.mkdir(exist_ok=True)
-
-    # Salvar DataFrame
+    # Usar diretório temporário isolado por chamada (evita colisões entre runs paralelas)
+    temp_dir = Path(tempfile.mkdtemp(prefix="mlflow_artifact_"))
     filepath = temp_dir / filename
-    if filename.endswith('.csv'):
-        df.to_csv(filepath, index=False)
-    elif filename.endswith('.parquet'):
-        df.to_parquet(filepath, index=False)
-    else:
-        raise ValueError(f"Formato não suportado: {filename}")
 
-    # Logar como artefato
-    mlflow.log_artifact(str(filepath), artifact_path=artifact_path)
+    try:
+        if filename.endswith('.csv'):
+            df.to_csv(filepath, index=False)
+        elif filename.endswith('.parquet'):
+            df.to_parquet(filepath, index=False)
+        else:
+            raise ValueError(f"Formato não suportado: {filename}")
 
-    # Limpar arquivo temporário
-    filepath.unlink()
+        mlflow.log_artifact(str(filepath), artifact_path=artifact_path)
+    finally:
+        # Limpar arquivo e diretório — sempre, mesmo em caso de erro ou interrupção
+        shutil.rmtree(temp_dir, ignore_errors=True)
 
 
 def get_best_run(

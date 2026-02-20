@@ -189,6 +189,81 @@ class Config:
         """Retorna eps para DBSCAN."""
         return self.get("ml.dbscan.eps", 0.5)
 
+    # Getters específicos para Ruptures (change point detection)
+    def get_ruptures_algorithm(self) -> str:
+        """Retorna algoritmo para detecção de change points."""
+        return self.get("ml.degradation.algorithm", "Pelt")
+
+    def get_ruptures_model(self) -> str:
+        """Retorna modelo de custo para Ruptures."""
+        return self.get("ml.degradation.model", "l2")
+
+    def get_ruptures_penalty(self) -> float:
+        """Retorna penalidade para o algoritmo PELT."""
+        return self.get("ml.degradation.penalty", 3)
+
+    def get_ruptures_min_size(self) -> int:
+        """Retorna número mínimo de voltas entre dois breakpoints."""
+        return self.get("ml.degradation.min_size", 3)
+
+    def get_ruptures_jump(self) -> int:
+        """Retorna step do grid de busca do PELT."""
+        return self.get("ml.degradation.jump", 1)
+
+    def get_ruptures_min_cliff_magnitude(self) -> float:
+        """Retorna magnitude mínima positiva (segundos) para considerar um cliff válido.
+        Cliffs com magnitude < threshold são falsos positivos (ex: race start transition)."""
+        return self.get("ml.degradation.min_cliff_magnitude", 0.3)
+
+    def get_ruptures_penalty_search_range(self) -> list:
+        """Retorna range de penalties para calibração via --penalty-search."""
+        return self.get("ml.degradation.penalty_search_range", [1, 2, 3, 5, 8, 13, 21])
+
+    def get_ruptures_validation_enabled(self) -> bool:
+        """Retorna se a validação por slope está habilitada."""
+        return self.get("ml.degradation.validation.enabled", True)
+
+    def get_ruptures_validation_window(self) -> int:
+        """Retorna janela de laps antes do cliff para calcular slope de degradação."""
+        return self.get("ml.degradation.validation.window_laps", 5)
+
+    def get_ruptures_validation_slope_threshold(self) -> float:
+        """Retorna slope mínimo positivo (segundos/volta) para validar um cliff.
+        Slope positivo = ritmo degradando = cliff real."""
+        return self.get("ml.degradation.validation.slope_threshold", 0.05)
+
+    def get_silhouette_threshold(self) -> float:
+        """Retorna threshold de Silhouette para avaliação de qualidade de clustering.
+        Para dados contínuos de F1, 0.25 é realista (range esperado: 0.2–0.4)."""
+        return self.get("ml.clustering.evaluation.silhouette_threshold", 0.25)
+
+    def get_davies_bouldin_threshold(self) -> float:
+        """Retorna threshold máximo de Davies-Bouldin para clustering de qualidade."""
+        return self.get("ml.clustering.evaluation.davies_bouldin_threshold", 1.5)
+
+    # Getters específicos para MLFlow
+    def get_mlflow_enabled(self) -> bool:
+        """Retorna se o tracking MLFlow está habilitado."""
+        return self.get("mlflow.enabled", False)
+
+    def get_mlflow_tracking_uri(self) -> str:
+        """Retorna URI do servidor de tracking MLFlow.
+
+        Caminhos relativos "file:./" são resolvidos em absolutos a partir da
+        raiz do projeto (diretório do config.yaml), garantindo que o MLflow
+        escreva sempre no mesmo lugar independente do CWD do processo chamador.
+        """
+        uri = self.get("mlflow.tracking_uri", "file:./mlruns")
+        if uri.startswith("file:./") or uri.startswith("file:../"):
+            relative_part = uri[len("file:"):]
+            project_root = Path(__file__).parent.parent.parent
+            uri = "file:" + str((project_root / relative_part).resolve())
+        return uri
+
+    def get_mlflow_experiment_prefix(self) -> str:
+        """Retorna prefixo do nome do experimento MLFlow."""
+        return self.get("mlflow.experiment_prefix", "F1")
+
     def __getitem__(self, key: str) -> Any:
         """Permite acesso via colchetes."""
         return self.get(key)

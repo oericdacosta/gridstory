@@ -414,6 +414,70 @@ laps_df['is_anomaly'] = predictions == -1
 
 ---
 
+## 3.5. Change Point Detection (Ruptures/PELT)
+
+**Função:** `detect_tire_changepoints()`
+
+**Localização:** `src/ml/change_point.py`
+
+### Objetivo
+
+Detectar **tire cliffs** — o momento exato dentro de um stint em que a degradação do pneu muda de regime (degradação acelerada):
+
+- Pneu em fase de "uso normal" → pneu em "cliff" (queda abrupta de performance)
+- Diferente do Isolation Forest: detecta **padrão sequencial** ao longo das voltas do stint
+
+### Como Funciona
+
+O algoritmo PELT (Pruned Exact Linear Time) segmenta a série temporal de `LapTime_delta` por stint em regimes de média distintos. Um cliff é detectado quando a mudança de média entre regimes supera `min_cliff_magnitude` segundos e é validado por slope positivo de degradação.
+
+### Parâmetros (config.yaml)
+
+```yaml
+ml:
+  degradation:
+    algorithm: "Pelt"
+    model: "l2"              # CostL2: detecta mudança de média
+    penalty: 3               # Sensibilidade — calibrar via ruptures_analysis.py --penalty-search
+    min_size: 3              # Mínimo de voltas entre breakpoints
+    min_cliff_magnitude: 0.3 # Segundos — magnitude mínima para considerar cliff real
+    validation:
+      enabled: true
+      window_laps: 5         # Voltas antes do cliff para calcular slope
+      slope_threshold: 0.05  # Slope mínimo positivo (s/volta) para validar cliff
+```
+
+### Calibração de penalty
+
+```bash
+# Testar múltiplas penalties e comparar no MLFlow UI
+uv run python cli/ruptures_analysis.py --year 2025 --round 1 --penalty-search --mlflow
+
+# Escolher melhor valor → setar em config.yaml > ml.degradation.penalty
+```
+
+### Colunas Adicionadas (`laps_changepoints.parquet`)
+
+- `stint_regime`: Regime dentro do stint (0 = antes do cliff, 1 = depois)
+- `is_cliff_lap`: Flag da volta onde ocorreu o cliff
+
+### Sumário (`tire_cliffs.parquet`)
+
+Por `(Driver, Stint)`:
+- `has_cliff`: Boolean — cliff detectado no stint
+- `cliff_lap`: Número da volta onde ocorreu o cliff
+- `cliff_delta_magnitude`: Magnitude da mudança em segundos
+- `cliff_validated`: Se passou pela validação de slope
+
+```python
+from src.ml.change_point import detect_tire_changepoints, summarize_cliffs
+
+laps_changepoints, changepoints_df = detect_tire_changepoints(laps_anomalies)
+summary = summarize_cliffs(changepoints_df)
+```
+
+---
+
 ## 4. Métricas de Avaliação
 
 ### 4.0. Estatísticas por Cluster
@@ -605,20 +669,13 @@ print(results['anomaly_metrics'])
 
 ---
 
-### 5.5. CLI de Análise com MLFlow
+### 5.5. Executar Pipeline com Tracking
+
+O tracking MLFlow é config-driven — habilitado via `mlflow.enabled` em `config.yaml`:
 
 ```bash
-# Análise completa com tracking
-uv run python cli/ml_analysis.py --year 2025 --round 1 --mlflow --show-metrics
-
-# Apenas clustering
-uv run python cli/ml_analysis.py --year 2025 --round 1 --clustering --mlflow
-
-# Piloto específico
-uv run python cli/ml_analysis.py --year 2025 --round 1 --driver VER --mlflow --save
-
-# Comparar runs anteriores
-uv run python cli/ml_analysis.py --compare --experiment "F1_2025_Round_01" --max-runs 5
+# MLFlow ativo via config.yaml (mlflow.enabled: true)
+uv run python cli/pipeline.py 2025 1
 ```
 
 ---
@@ -689,25 +746,18 @@ run_id = track_anomaly_detection_run(
 
 ### 5.8. Fluxo de Trabalho Recomendado
 
-#### 1. Experimentação Inicial (Sem MLFlow)
+#### 1. Rodar pipeline com tracking
 
 ```bash
-# Testar pipeline básico
-uv run python cli/ml_analysis.py --year 2025 --round 1 --show-metrics
+# MLFlow ativo via config.yaml (mlflow.enabled: true/false)
+uv run python cli/pipeline.py 2025 1
 ```
 
-#### 2. Experimentação com Tracking
-
-```bash
-# Experimentar com diferentes configurações
-uv run python cli/ml_analysis.py --year 2025 --round 1 --mlflow --save
-```
-
-#### 3. Análise de Resultados
+#### 2. Análise de Resultados
 
 ```bash
 # Iniciar MLFlow UI
-mlflow ui
+uv run mlflow ui
 
 # Acesse http://localhost:5000
 # Compare runs, visualize métricas, identifique melhor configuração

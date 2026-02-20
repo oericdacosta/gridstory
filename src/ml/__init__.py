@@ -11,6 +11,7 @@ Pipeline não supervisionado para análise de corridas de F1:
 
 from .clustering import cluster_laps_kmeans, cluster_laps_dbscan, find_optimal_k
 from .anomaly_detection import detect_anomalies_isolation_forest, summarize_anomalies
+from .change_point import detect_tire_changepoints, summarize_cliffs
 from .pipeline import (
     create_ml_pipeline,
     run_race_analysis,
@@ -22,6 +23,7 @@ from .pipeline import (
 from .metrics import (
     calculate_clustering_metrics,
     calculate_anomaly_metrics,
+    calculate_changepoint_metrics,
     calculate_cluster_statistics,
     calculate_per_driver_clustering_metrics,
     evaluate_clustering_quality,
@@ -30,6 +32,7 @@ from .tracking import (
     setup_mlflow,
     track_clustering_run,
     track_anomaly_detection_run,
+    track_changepoint_run,
     track_pipeline_run,
     get_best_run,
     compare_runs,
@@ -43,6 +46,9 @@ __all__ = [
     # Anomaly Detection
     "detect_anomalies_isolation_forest",
     "summarize_anomalies",
+    # Change Point Detection
+    "detect_tire_changepoints",
+    "summarize_cliffs",
     # Pipeline
     "create_ml_pipeline",
     "run_race_analysis",
@@ -53,6 +59,7 @@ __all__ = [
     # Metrics
     "calculate_clustering_metrics",
     "calculate_anomaly_metrics",
+    "calculate_changepoint_metrics",
     "calculate_cluster_statistics",
     "calculate_per_driver_clustering_metrics",
     "evaluate_clustering_quality",
@@ -60,6 +67,7 @@ __all__ = [
     "setup_mlflow",
     "track_clustering_run",
     "track_anomaly_detection_run",
+    "track_changepoint_run",
     "track_pipeline_run",
     "get_best_run",
     "compare_runs",

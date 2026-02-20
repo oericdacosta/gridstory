@@ -110,7 +110,17 @@ ml:
   # Ruptures - Detecção de degradação
   degradation:
     algorithm: "Pelt"
+    model: "l2"           # CostL2: detecta step change de média (tire cliff)
     penalty: 3
+    min_size: 3           # mínimo de voltas entre dois breakpoints
+    jump: 1               # step do grid de busca
+    min_cliff_magnitude: 0.3  # segundos — cliffs com magnitude menor são descartados
+                              # magnitude negativa = ficando mais rápido = falso positivo (race start)
+    penalty_search_range: [1, 2, 3, 5, 8, 13, 21]  # para calibração via --penalty-search
+    validation:
+      enabled: true
+      window_laps: 5      # laps antes do cliff para calcular slope de degradação
+      slope_threshold: 0.05  # segundos/volta — slope mínimo positivo para validar cliff
 
   # Isolation Forest - Anomalias
   anomaly:
@@ -125,14 +135,24 @@ ml:
   # Clustering
   clustering:
     algorithm: "KMeans"
-    n_clusters: 3
-    k_range_min: 2      # Mínimo de clusters para análise
-    k_range_max: 6      # Máximo de clusters para análise
+    n_clusters: 3       # Fixo em 3: prior físico F1 (push/base/degraded)
+                        # Não usar find_optimal_k() no pipeline — quebra semântica downstream LLM
+    k_range_min: 2      # Mínimo de clusters para find_optimal_k() (ferramenta de pesquisa)
+    k_range_max: 6      # Máximo de clusters para find_optimal_k() (ferramenta de pesquisa)
+    evaluation:
+      silhouette_threshold: 0.25   # realista para dados contínuos de F1 (esperado 0.2–0.4)
+      davies_bouldin_threshold: 1.5
 
   # DBSCAN
   dbscan:
     min_samples: 3
     eps: 0.5
+
+# MLFlow
+mlflow:
+  enabled: true
+  tracking_uri: "file:./mlruns"
+  experiment_prefix: "F1"  # Experimento: F1_{year}_Round_{round:02d}
 
 # API (futuro)
 api:

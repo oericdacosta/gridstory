@@ -21,8 +21,10 @@ from ..preprocessing.feature_engineering import (
 )
 from .clustering import cluster_laps_kmeans, cluster_laps_dbscan
 from .anomaly_detection import detect_anomalies_isolation_forest
+from .change_point import detect_tire_changepoints, summarize_cliffs
 from .metrics import (
     calculate_anomaly_metrics,
+    calculate_changepoint_metrics,
     calculate_cluster_statistics,
     calculate_per_driver_clustering_metrics,
 )
@@ -311,9 +313,12 @@ def run_race_analysis(
     laps_df: pd.DataFrame,
     analysis_type: str = "all",
     driver: str | None = None,
-    enable_mlflow: bool = False,
+    enable_mlflow: bool | None = None,
     experiment_name: str | None = None,
     run_name: str | None = None,
+    year: int | None = None,
+    round_number: int | None = None,
+    contamination_profile: str = 'normal',
 ) -> dict[str, pd.DataFrame]:
     """
     Executa análise completa de ML em dados de voltas de uma corrida.
@@ -331,9 +336,14 @@ def run_race_analysis(
                       - 'anomaly': Apenas detecção de anomalias
                       - 'all': Ambos (padrão)
         driver: Filtrar por piloto específico (opcional)
-        enable_mlflow: Se True, tracka experimento com MLFlow
-        experiment_name: Nome do experimento MLFlow (requerido se enable_mlflow=True)
-        run_name: Nome do run MLFlow (opcional, será auto-gerado se não fornecido)
+        enable_mlflow: Se True, tracka com MLFlow. None = lê de config.yaml (padrão)
+        experiment_name: Nome do experimento MLFlow (auto-gerado se None)
+        run_name: Nome do run MLFlow (auto-gerado se None)
+        year: Ano da corrida (usado no nome do experimento e nos params do MLFlow)
+        round_number: Número da rodada (idem)
+        contamination_profile: Perfil de contaminação para Isolation Forest.
+                               'clean' (3%), 'normal' (5%), 'chaotic' (10%).
+                               Lido de config.yaml — não hardcoded.
 
     Returns:
         Dicionário com DataFrames de resultados:
@@ -343,7 +353,11 @@ def run_race_analysis(
         - 'summary': Sumário da análise
         - 'clustering_metrics': Métricas de clustering (se clustering executado)
         - 'anomaly_metrics': Métricas de anomaly detection (se executado)
-        - 'mlflow_run_id': ID do run MLFlow (se enable_mlflow=True)
+        - 'laps_changepoints': Dados com regimes de degradação (stint_regime, is_cliff_lap)
+        - 'tire_cliffs': Sumário de cliffs por (Driver, Stint)
+        - 'tire_cliffs_summary': Sumário por piloto
+        - 'changepoint_metrics': Métricas de change point detection
+        - 'mlflow_run_id': ID do run MLFlow (se MLFlow habilitado)
 
     Example:
         >>> import pandas as pd
@@ -366,11 +380,23 @@ def run_race_analysis(
         >>> anomalies = results['laps_anomalies'][results['laps_anomalies']['is_anomaly']]
         >>> print(f"Anomalias detectadas: {len(anomalies)}")
     """
+    # Resolver enable_mlflow: None = lê do config.yaml
+    if enable_mlflow is None:
+        from src.utils.config import get_config as _get_config
+        enable_mlflow = _get_config().get_mlflow_enabled()
+
+    # Resolver year/round a partir do DataFrame se não passados explicitamente
+    _year = year or (int(laps_df['Year'].iloc[0]) if 'Year' in laps_df.columns else 0)
+    _round = round_number or (int(laps_df['Round'].iloc[0]) if 'Round' in laps_df.columns else 0)
+
     # Setup MLFlow se habilitado
     if enable_mlflow:
+        from src.utils.config import get_config as _get_config
+        _cfg = _get_config()
         if experiment_name is None:
-            raise ValueError("experiment_name é requerido quando enable_mlflow=True")
-        setup_mlflow(experiment_name)
+            prefix = _cfg.get_mlflow_experiment_prefix()
+            experiment_name = f"{prefix}_{_year}_Round_{_round:02d}"
+        setup_mlflow(experiment_name, tracking_uri=_cfg.get_mlflow_tracking_uri())
 
     # Filtrar por piloto se especificado
     if driver:
@@ -455,7 +481,11 @@ def run_race_analysis(
 
         has_driver_col = 'Driver' in laps_for_clustering.columns
 
-        # 2.1 K-Means por piloto (k=3 como prior físico: push | gestão | degradação)
+        # 2.1 K-Means por piloto com k=3 FIXO (prior físico F1: push | base | degraded)
+        # k=3 não é limitação técnica — é escolha de domínio.
+        # O downstream (LLM/Agno) precisa que cluster_semantic seja consistente entre
+        # pilotos e corridas. find_optimal_k() existe como ferramenta de pesquisa
+        # mas nunca deve ser chamada aqui. Ver: config.yaml > ml.clustering
         laps_clustered = cluster_laps_kmeans(
             laps_for_clustering,
             feature_columns=cluster_feature_cols,
@@ -553,10 +583,13 @@ def run_race_analysis(
             ]
             if col in laps_scaled.columns
         ]
+        # contamination lido do config via perfil (clean/normal/chaotic) — não hardcoded
+        from src.utils.config import get_config as _get_config
+        _contamination = _get_config().get_contamination(contamination_profile)
         laps_anomalies = detect_anomalies_isolation_forest(
             laps_scaled,
             feature_columns=anomaly_feature_cols,
-            contamination=0.05,
+            contamination=_contamination,
             group_by='Driver' if 'Driver' in laps_scaled.columns else None,
             return_scores=True
         )
@@ -569,6 +602,30 @@ def run_race_analysis(
         )
         anomaly_metrics_dict = calculate_anomaly_metrics(predictions, scores)
         results['anomaly_metrics'] = pd.DataFrame([anomaly_metrics_dict])
+
+    # Etapa 4: Detecção de Tire Cliffs (Ruptures/PELT)
+    # Roda apenas no modo 'all' e requer a saída do anomaly detection
+    changepoint_metrics_dict = None
+    if analysis_type == 'all' and 'laps_anomalies' in results:
+        laps_for_cp = results['laps_anomalies'].copy()
+
+        # LapTime_delta já deve existir (calculado em engineer_lap_features)
+        # mas garantimos como fallback
+        if 'LapTime_delta' not in laps_for_cp.columns and 'LapTime_seconds' in laps_for_cp.columns:
+            laps_for_cp['LapTime_delta'] = laps_for_cp.groupby('Driver')['LapTime_seconds'].transform(
+                lambda x: x - x.median()
+            )
+
+        required_cp = ['is_anomaly', 'Stint', 'LapNumber', 'LapTime_delta']
+        if all(c in laps_for_cp.columns for c in required_cp):
+            laps_changepoints, changepoints_df = detect_tire_changepoints(laps_for_cp)
+            cliffs_summary = summarize_cliffs(changepoints_df)
+            changepoint_metrics_dict = calculate_changepoint_metrics(changepoints_df)
+
+            results['laps_changepoints'] = laps_changepoints
+            results['tire_cliffs'] = changepoints_df
+            results['tire_cliffs_summary'] = cliffs_summary
+            results['changepoint_metrics'] = pd.DataFrame([changepoint_metrics_dict])
 
     # Criar sumário executivo
     summary = {
@@ -595,11 +652,11 @@ def run_race_analysis(
     # Tracking com MLFlow (se habilitado)
     if enable_mlflow:
         if run_name is None:
-            run_name = f"{analysis_type}_analysis_v2"
+            run_name = f"Pipeline_{_year}_R{_round:02d}"
             if driver:
                 run_name += f"_{driver}"
 
-        # Artefatos: DataFrames principais salvos como CSV na aba Artifacts do MLFlow
+        # Artefatos: DataFrames principais salvos como CSV
         mlflow_artifacts = {}
         if 'laps_clustered' in results:
             mlflow_artifacts['laps_clustered.csv'] = results['laps_clustered']
@@ -611,18 +668,26 @@ def run_race_analysis(
             per_driver_list = results['per_driver_clustering_metrics'].get('per_driver', [])
             if per_driver_list:
                 mlflow_artifacts['per_driver_metrics.csv'] = pd.DataFrame(per_driver_list)
+        if 'laps_changepoints' in results:
+            mlflow_artifacts['laps_changepoints.csv'] = results['laps_changepoints']
+        if 'tire_cliffs' in results:
+            mlflow_artifacts['tire_cliffs.csv'] = results['tire_cliffs']
+        if 'tire_cliffs_summary' in results:
+            mlflow_artifacts['tire_cliffs_summary.csv'] = results['tire_cliffs_summary']
 
         mlflow_run_id = track_pipeline_run(
             run_name=run_name,
-            year=laps_df['Year'].iloc[0] if 'Year' in laps_df.columns else 0,
-            round_number=laps_df['Round'].iloc[0] if 'Round' in laps_df.columns else 0,
+            year=_year,
+            round_number=_round,
             clustering_results=clustering_metrics_dict,
             anomaly_results=anomaly_metrics_dict,
+            changepoint_results=changepoint_metrics_dict,
             params={
                 'analysis_type': analysis_type,
                 'driver': driver if driver else 'all',
                 'scaler_type': 'robust',
-                'contamination': 0.05,
+                'contamination_profile': contamination_profile,
+                'contamination': _contamination if 'laps_anomalies' in results else None,
                 'kmeans_k': 3,
                 'structural_filter_threshold': 1.5,
                 'cluster_semantics': 'size_first_then_delta',
@@ -631,7 +696,6 @@ def run_race_analysis(
                 'anomaly_features': ','.join(anomaly_feature_cols) if analysis_type in ['anomaly', 'all'] else '',
             },
             tags={
-                'pipeline': 'improved_v2',
                 'driver': driver if driver else 'all',
                 'features': 'engineered',
             },

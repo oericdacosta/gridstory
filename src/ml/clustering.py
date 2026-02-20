@@ -21,6 +21,12 @@ def find_optimal_k(
     """
     Encontra o número ótimo de clusters (k) usando método do cotovelo ou silhueta.
 
+    NOTA: Ferramenta de pesquisa — NÃO é chamada no pipeline de produção.
+    O pipeline usa k=3 fixo (config: ml.clustering.n_clusters) para garantir
+    consistência semântica dos labels entre pilotos e entre corridas.
+    O agente LLM downstream depende de 3 clusters estáveis: push, base e degraded.
+    Use esta função apenas para exploração e calibração offline.
+
     Args:
         X: Matriz de features (já escalonada)
         k_range: Range de valores de k para testar (padrão: carrega de config.yaml)
