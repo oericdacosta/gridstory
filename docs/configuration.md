@@ -89,6 +89,47 @@ ml:
 
 ---
 
+### Change Point Detection (Ruptures/PELT)
+
+```yaml
+ml:
+  degradation:
+    algorithm: "Pelt"
+    model: "l2"               # CostL2: detecta mudança de média (tire cliff)
+    penalty: 3                # Sensibilidade — menor = mais cliffs, maior = menos
+    min_size: 3               # Mínimo de voltas entre dois breakpoints
+    jump: 1                   # Step do grid de busca
+    min_cliff_magnitude: 0.3  # Segundos — magnitude mínima para cliff real
+    penalty_search_range: [1, 2, 3, 5, 8, 13, 21]  # Range para calibração
+    validation:
+      enabled: true
+      window_laps: 5          # Voltas antes do cliff para calcular slope
+      slope_threshold: 0.05   # Slope mínimo positivo (s/volta) para validar cliff
+```
+
+**Customização**:
+- `penalty`: Parâmetro principal. Calibre com `cli/ruptures_analysis.py --penalty-search`, escolha o melhor valor no MLFlow UI e sete aqui
+- `min_cliff_magnitude`: Valores menores detectam cliffs sutis; maiores filtram falsos positivos
+- `penalty_search_range`: Range de valores a testar durante calibração
+
+---
+
+### MLFlow
+
+```yaml
+mlflow:
+  enabled: true                 # true = tracking em toda execução do pipeline
+  tracking_uri: "file:./mlruns" # Local de armazenamento dos runs
+  experiment_prefix: "F1"       # Experimento: F1_{year}_Round_{round:02d}
+```
+
+**Customização**:
+- `enabled: false`: Desabilitar tracking sem mudar código
+- `tracking_uri`: Apontar para servidor MLFlow remoto (ex: `http://mlflow-server:5000`)
+- Visualizar runs: `uv run mlflow ui` → http://localhost:5000
+
+---
+
 ### Cache e Extração
 
 ```yaml
@@ -148,6 +189,20 @@ value = config.get('preprocessing.interpolation.num_points')
 - `get_k_range_max()` - Máximo de clusters
 - `get_dbscan_min_samples()` - Min samples DBSCAN
 - `get_dbscan_eps()` - Epsilon DBSCAN
+
+**Change Point Detection (Ruptures)**:
+- `get_ruptures_penalty()` - Penalty do algoritmo PELT
+- `get_ruptures_min_size()` - Mínimo de voltas entre breakpoints
+- `get_ruptures_min_cliff_magnitude()` - Magnitude mínima para cliff válido
+- `get_ruptures_penalty_search_range()` - Range de penalties para calibração
+- `get_ruptures_validation_enabled()` - Habilitar validação por slope
+- `get_ruptures_validation_window()` - Janela de voltas para calcular slope
+- `get_ruptures_validation_slope_threshold()` - Slope mínimo para validar cliff
+
+**MLFlow**:
+- `get_mlflow_enabled()` - Se tracking está habilitado
+- `get_mlflow_tracking_uri()` - URI do servidor MLFlow
+- `get_mlflow_experiment_prefix()` - Prefixo do nome do experimento
 
 ---
 

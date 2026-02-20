@@ -6,10 +6,14 @@
 pitwall-ai/
 │
 ├── cli/                        # Ferramentas de linha de comando
-│   ├── extract.py             # [IMPLEMENTADO] CLI de extração de dados
-│   ├── preprocess.py          # [IMPLEMENTADO] CLI de pré-processamento
+│   ├── pipeline.py            # [IMPLEMENTADO] Pipeline completo (único ponto de entrada)
+│   ├── pipeline_steps/        # [IMPLEMENTADO] Módulos internos do pipeline
+│   │   ├── extraction.py      # Fase 1: Extração
+│   │   ├── preprocessing.py   # Fase 2: Pré-processamento
+│   │   ├── ml.py              # Fase 3: Machine Learning
+│   │   └── reporting.py       # Formatação de saídas
+│   ├── ruptures_analysis.py   # [IMPLEMENTADO] Calibração de penalty (penalty-search)
 │   ├── list_data.py           # [IMPLEMENTADO] Listagem de dados
-│   ├── train_ml.py            # [PLANEJADO] Treinamento de ML
 │   ├── generate_report.py     # [PLANEJADO] Geração de relatórios
 │   └── serve.py               # [PLANEJADO] Servidor API
 │
@@ -25,12 +29,13 @@ pitwall-ai/
 │   │   ├── signal_processing.py # Processamento de sinal
 │   │   └── feature_engineering.py # Features estatísticas
 │   │
-│   ├── ml/                    # [PLANEJADO] Pipeline ML
-│   │   ├── degradation.py     # Degradação de pneus (Ruptures)
-│   │   ├── anomaly.py         # Detecção de anomalias (Isolation Forest)
-│   │   ├── clustering.py      # Clustering de stints (K-Means/DBSCAN)
-│   │   ├── events.py          # Detecção de eventos
-│   │   └── orchestrator.py    # Orquestração do pipeline ML
+│   ├── ml/                    # [IMPLEMENTADO] Pipeline ML
+│   │   ├── pipeline.py        # Orquestração completa (run_race_analysis)
+│   │   ├── clustering.py      # K-Means e DBSCAN por piloto
+│   │   ├── anomaly_detection.py # Isolation Forest
+│   │   ├── change_point.py    # Ruptures/PELT — tire cliffs
+│   │   ├── metrics.py         # Métricas de avaliação (silhouette, DB, etc.)
+│   │   └── tracking.py        # Integração MLFlow
 │   │
 │   ├── models/                # [PLANEJADO] Modelos Pydantic
 │   │   ├── race.py            # Modelos de dados de corrida
@@ -112,14 +117,15 @@ Pré-processamento matemático de dados usando SciPy.
 - **Feature Engineering**: Z-scores, outliers, degradação (scipy.stats)
 - Prepara dados para pipeline ML
 
-### Módulos Planejados
-
 #### `src/ml/`
 Pipeline de machine learning para detecção de eventos.
-- **Degradação**: Change Point Detection (Ruptures)
-- **Anomalia**: Detecção de outliers (Isolation Forest)
-- **Clustering**: Agrupamento de stints (K-Means/DBSCAN)
-- **Eventos**: Síntese de undercuts, tire drops, etc.
+- **Clustering**: K-Means por piloto (k=3 fixo: push/base/degraded) + DBSCAN complementar
+- **Anomaly Detection**: Isolation Forest (contaminação config-driven por perfil de corrida)
+- **Change Point Detection**: Ruptures/PELT para detectar tire cliffs por stint
+- **Métricas**: Silhouette, Davies-Bouldin, Calinski-Harabasz (por piloto)
+- **MLFlow**: Tracking config-driven (parâmetros, métricas, artefatos CSV)
+
+### Módulos Planejados
 
 #### `src/models/`
 Modelos Pydantic para validação.
@@ -183,10 +189,11 @@ Rastreamento e monitoramento com MLflow.
        │
        ↓
 ┌─────────────────────┐
-│  Pipeline ML        │ [PLANEJADO]
+│  Pipeline ML        │ [IMPLEMENTADO]
 │  (src/ml/)          │
-│  • Ruptures         │
+│  • Ruptures/PELT    │
 │  • Scikit-learn     │
+│  • MLFlow           │
 └──────┬──────────────┘
        │
        ↓
@@ -219,11 +226,12 @@ Rastreamento e monitoramento com MLflow.
 | Extração de Dados | FastF1, Pandas, NumPy | ✅ Implementado |
 | Armazenamento | Parquet (PyArrow) | ✅ Implementado |
 | Pré-processamento | SciPy (interpolate, signal, stats) | ✅ Implementado |
-| ML | Ruptures, Scikit-learn | Planejado |
+| ML | Scikit-learn (KMeans, DBSCAN, IsolationForest) | ✅ Implementado |
+| Change Point Detection | Ruptures/PELT (tire cliffs) | ✅ Implementado |
+| Observabilidade | MLflow (tracking config-driven) | ✅ Implementado |
 | Validação | Pydantic | Planejado |
 | API | FastAPI | Planejado |
 | LLM | DSPY, Agno | Planejado |
-| Observabilidade | MLflow | Planejado |
 | CLI | argparse | ✅ Implementado |
 
 ## Fases de Desenvolvimento
@@ -243,11 +251,14 @@ Rastreamento e monitoramento com MLflow.
 - [x] Testes (23 testes, 100% passando)
 - [x] Documentação completa
 
-### Fase 3: Pipeline ML [EM PROGRESSO]
-- [ ] Detecção de degradação (Ruptures)
-- [ ] Detecção de anomalias (Isolation Forest)
-- [ ] Síntese de eventos
-- [ ] Validação Pydantic
+### Fase 3: Pipeline ML [✅ COMPLETA]
+- [x] Clustering (K-Means por piloto, k=3, semântica push/base/degraded)
+- [x] DBSCAN (análise complementar)
+- [x] Detecção de anomalias (Isolation Forest, perfis de contaminação)
+- [x] Change Point Detection (Ruptures/PELT, tire cliffs por stint)
+- [x] Métricas de avaliação (por piloto: silhouette, Davies-Bouldin)
+- [x] MLFlow tracking (config-driven, artefatos CSV)
+- [ ] Síntese de eventos estruturados (Pydantic — próxima fase)
 
 ### Fase 4: API & LLM [EM BREVE]
 - [ ] Servidor FastAPI

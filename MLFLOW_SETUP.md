@@ -78,26 +78,18 @@ Este documento resume a integração completa do **MLFlow** e **métricas de ava
 
 ---
 
-### 4. CLI de Análise com MLFlow (`cli/ml_analysis.py`)
+### 4. Tracking Config-Driven
 
-**Novo CLI dedicado para análise de ML com tracking**:
+O tracking MLFlow é habilitado diretamente no `config.yaml`:
 
-```bash
-# Análise completa com tracking
-uv run python cli/ml_analysis.py --year 2025 --round 1 --mlflow --show-metrics
-
-# Apenas clustering
-uv run python cli/ml_analysis.py --year 2025 --round 1 --clustering --mlflow
-
-# Piloto específico
-uv run python cli/ml_analysis.py --year 2025 --round 1 --driver VER --mlflow --save
-
-# Comparar runs anteriores
-uv run python cli/ml_analysis.py --compare --experiment "F1_2025_Round_01" --max-runs 5
-
-# Mostrar melhor run
-uv run python cli/ml_analysis.py --compare --experiment "F1_2025_Round_01" --best
+```yaml
+mlflow:
+  enabled: true                    # habilitar/desabilitar sem mudar código
+  tracking_uri: "file:./mlruns"
+  experiment_prefix: "F1"          # experimento: F1_{year}_Round_{round:02d}
 ```
+
+Com `enabled: true`, cada execução de `uv run python cli/pipeline.py 2025 1` cria automaticamente um run no MLFlow com métricas, parâmetros e artefatos CSV.
 
 ---
 
@@ -144,17 +136,13 @@ mlflow ui
 
 ```bash
 # 1. Instalar dependências (MLFlow já incluído)
-uv sync --prerelease=allow
+uv sync
 
-# 2. Ter dados processados
+# 2. Habilitar MLFlow no config.yaml (já vem habilitado por padrão)
+# mlflow.enabled: true
+
+# 3. Rodar pipeline — tracking acontece automaticamente
 uv run python cli/pipeline.py 2025 1
-```
-
-### Análise com Tracking
-
-```bash
-# Análise completa com tracking
-uv run python cli/ml_analysis.py --year 2025 --round 1 --mlflow --show-metrics --save
 ```
 
 ### Visualizar Resultados
@@ -225,21 +213,14 @@ print(results['anomaly_metrics'])
 
 ## 🔬 Fluxo de Trabalho Recomendado
 
-### 1. Desenvolvimento Inicial (Sem MLFlow)
+### 1. Rodar pipeline com tracking
 
 ```bash
-# Testar pipeline básico
-uv run python -m cli.ml_analysis --year 2025 --round 1 --show-metrics
+# MLFlow habilitado via config.yaml (mlflow.enabled: true)
+uv run python cli/pipeline.py 2025 1
 ```
 
-### 2. Experimentação (Com MLFlow)
-
-```bash
-# Experimentar com diferentes configurações
-uv run python -m cli.ml_analysis --year 2025 --round 1 --mlflow --save
-```
-
-### 3. Análise de Resultados (MLFlow UI)
+### 2. Análise de Resultados (MLFlow UI)
 
 ```bash
 # Iniciar UI
@@ -247,7 +228,7 @@ uv run mlflow ui
 
 # Acesse http://localhost:5000
 # Compare runs, visualize métricas, identifique melhor configuração
-# Na aba "Artifacts" de cada run: laps_clustered.csv, per_driver_metrics.csv, etc.
+# Na aba "Artifacts" de cada run: laps_clustered.csv, per_driver_metrics.csv, tire_cliffs.csv, etc.
 ```
 
 ### 4. Comparação Programática
@@ -283,18 +264,17 @@ predictions = model.predict(new_data)
 
 ```
 src/ml/
-├── metrics.py              # ✅ NOVO: Métricas completas
-├── tracking.py             # ✅ NOVO: Integração MLFlow
-├── pipeline.py             # ✅ ATUALIZADO: Com tracking
-├── clustering.py           # Existente (K-Means, DBSCAN)
-├── anomaly_detection.py    # Existente (Isolation Forest)
-└── README.md               # ✅ ATUALIZADO: Documentação completa
+├── pipeline.py             # run_race_analysis() — clustering + anomaly + changepoint + mlflow
+├── clustering.py           # K-Means e DBSCAN por piloto
+├── anomaly_detection.py    # Isolation Forest
+├── change_point.py         # Ruptures/PELT — tire cliffs
+├── metrics.py              # Métricas de avaliação (silhouette, Davies-Bouldin, etc.)
+├── tracking.py             # Integração MLFlow
+└── README.md               # Documentação completa
 
 cli/
-└── ml_analysis.py          # ✅ NOVO: CLI com MLFlow
-
-examples/
-└── mlflow_example.py       # ✅ NOVO: Exemplos completos
+├── pipeline.py             # Único ponto de entrada do pipeline completo
+└── ruptures_analysis.py    # Calibração de penalty (penalty-search)
 
 mlruns/                     # ✅ Gerado automaticamente pelo MLFlow
 └── [experiments]/
@@ -333,7 +313,7 @@ mlruns/                     # ✅ Gerado automaticamente pelo MLFlow
 - [x] Módulo de métricas (`metrics.py`)
 - [x] Módulo de tracking (`tracking.py`)
 - [x] Pipeline atualizado com MLFlow
-- [x] CLI de análise com MLFlow
+- [x] Tracking config-driven via pipeline.py
 - [x] Exemplos funcionais
 - [x] Documentação completa
 - [x] README atualizado
@@ -366,7 +346,6 @@ mlruns/                     # ✅ Gerado automaticamente pelo MLFlow
 4. ✅ **Comparar resultados e selecionar melhor configuração**
 
 ### Curto Prazo (Próximas Features)
-- [ ] Adicionar Ruptures para change point detection
 - [ ] Visualizações (matplotlib) com tracking de plots
 - [ ] Testes unitários para métricas
 - [ ] Validação cruzada para hiperparâmetros
@@ -446,14 +425,13 @@ Você agora tem:
 
 **Próximo passo sugerido:**
 ```bash
-# 1. Rodar análise com tracking
-uv run python -m cli.ml_analysis --year 2025 --round 1 --mlflow --show-metrics --save
+# 1. Rodar pipeline (MLFlow habilitado via config.yaml)
+uv run python cli/pipeline.py 2025 1
 
 # 2. Visualizar resultados
 uv run mlflow ui
 
 # 3. Verificar aba "Artifacts" de cada run para ver os CSVs gerados
-# 4. Experimentar com diferentes configurações e comparar!
 ```
 
 ---

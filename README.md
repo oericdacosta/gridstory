@@ -25,7 +25,7 @@ PitWall AI é um pipeline de engenharia de dados para análise de corridas de F�
 | Pré-processamento | ✅ Implementado | SciPy (interpolação, signal processing, features) + Scikit-learn (imputação, encoding, escalonamento) |
 | Machine Learning | ✅ Implementado | Scikit-learn (K-Means, DBSCAN, Isolation Forest) com métricas por piloto |
 | Tracking ML | ✅ Implementado | MLFlow (métricas, parâmetros, artefatos CSV) |
-| Change Point Detection | 🚧 Próxima Fase | Ruptures (detecção de cliff de pneus) |
+| Change Point Detection | ✅ Implementado | Ruptures/PELT (detecção de tire cliffs por stint) |
 | Validação | 🚧 Próxima Fase | Pydantic |
 | API | 📅 Planejado | FastAPI |
 | LLM | 📅 Planejado | DSPY, Agno |
@@ -71,33 +71,19 @@ uv run python cli/pipeline.py 2025 1 --show-sample
 5. ✅ Salva dados processados em `data/processed/races/YEAR/round_XX/`
 6. ✅ Salva resultados de ML em `data/ml/races/YEAR/round_XX/`
 
-### 2. Análise de ML com Tracking (MLFlow)
+### 2. MLFlow (tracking automático)
+
+O tracking MLFlow é **config-driven** — habilitado via `config.yaml`:
+
+```yaml
+mlflow:
+  enabled: true  # false para desabilitar
+```
 
 ```bash
-# Análise completa com tracking MLFlow
-uv run python -m cli.ml_analysis --year 2025 --round 1 --mlflow --show-metrics
-
-# Clustering apenas
-uv run python -m cli.ml_analysis --year 2025 --round 1 --clustering --mlflow
-
-# Piloto específico
-uv run python -m cli.ml_analysis --year 2025 --round 1 --driver VER --mlflow --save
-
 # Ver resultados no MLFlow UI
 uv run mlflow ui
 # Acesse: http://localhost:5000
-```
-
-**Pré-requisito:** dados já processados pelo `pipeline.py` (passo 1).
-
-### 3. Comandos Individuais
-
-```bash
-# Apenas extração (SEMPRE extrai todos os dados)
-uv run python cli/extract.py 2025 1
-
-# Apenas pré-processamento (de dados já extraídos)
-uv run python cli/preprocess.py --year 2025 --round 1 --all --save
 ```
 
 ### Documentação Completa
@@ -115,14 +101,14 @@ uv run python cli/preprocess.py --year 2025 --round 1 --all --save
 ```
 pitwall-ai/
 ├── cli/                           # Scripts de linha de comando
-│   ├── pipeline.py                # Pipeline completo (orquestrador)
-│   ├── pipeline_steps/            # Módulos do pipeline
+│   ├── pipeline.py                # Pipeline completo (único ponto de entrada)
+│   ├── pipeline_steps/            # Módulos internos do pipeline
 │   │   ├── extraction.py          # Fase 1: Extração
 │   │   ├── preprocessing.py       # Fase 2: Pré-processamento
 │   │   ├── ml.py                  # Fase 3: Machine Learning
 │   │   └── reporting.py           # Formatação de saídas
-│   ├── extract.py                 # CLI de extração individual
-│   └── preprocess.py              # CLI de pré-processamento individual
+│   ├── ruptures_analysis.py       # Calibração de penalty (penalty-search)
+│   └── list_data.py               # Utilitário: lista dados disponíveis
 ├── src/                           # Código-fonte
 │   ├── extraction/                # Extração de dados (✅ implementado)
 │   ├── preprocessing/             # Pré-processamento (✅ implementado)
@@ -178,9 +164,12 @@ data/
 │   └── results_processed.parquet
 │
 └── ml/races/YEAR/round_XX/               # FASE 3: Machine Learning
-    ├── laps_clustered.parquet            # Clustering (ritmos)
-    ├── laps_anomalies.parquet            # Detecção de anomalias
-    └── anomalies_summary.parquet         # Sumário por piloto
+    ├── laps_clustered.parquet            # K-Means: ritmos (push/base/degraded)
+    ├── laps_anomalies.parquet            # Isolation Forest: voltas anômalas
+    ├── anomalies_summary.parquet         # Sumário de anomalias por piloto
+    ├── laps_changepoints.parquet         # PELT: regimes de degradação por stint
+    ├── tire_cliffs.parquet               # Tire cliffs detectados por (Driver, Stint)
+    └── tire_cliffs_summary.parquet       # Sumário de cliffs por piloto
 ```
 
 ## Funcionalidades
@@ -255,10 +244,15 @@ data/
 - **Aplicações**: Erros de piloto, quebras mecânicas, voltas excepcionais
 - **Saída**: Flags binários + scores de anomalia
 
-#### **C. Pipeline Integrado**
+#### **C. Change Point Detection (Ruptures/PELT)**
+- **PELT**: Detecta tire cliffs (mudanças de regime de degradação) dentro de cada stint
+- **Validação**: Confirma cliffs via slope positivo de degradação (evita falsos positivos)
+- **Saída**: `tire_cliffs.parquet` com `cliff_lap`, `cliff_delta_magnitude`, `cliff_validated`
+
+#### **D. Pipeline Integrado**
 - **ColumnTransformer**: Pré-processamento em um objeto único
 - **Pipeline Scikit-learn**: Encapsula pré-proc + ML
-- **run_race_analysis()**: Função de alto nível para análise completa
+- **run_race_analysis()**: Função de alto nível para análise completa (clustering + anomaly + changepoint)
 
 **Formato:** DataFrames com labels e scores
 **Documentação:** [src/ml/README.md](src/ml/README.md)
@@ -288,12 +282,13 @@ Dados Brutos → NumPy/Pandas/SciPy/Scikit-learn → Parquet (data/processed/)
 
 ### **FASE 3: Machine Learning (✅ Implementado)**
 ```
-Dados Processados → Scikit-learn → DataFrames com Labels/Scores
+Dados Processados → Scikit-learn + Ruptures → DataFrames com Labels/Scores
 ```
-- **K-Means**: Agrupamento de voltas por ritmo
-- **DBSCAN**: Detecção de clusters + ruído
+- **K-Means**: Agrupamento de voltas por ritmo (push / base / degraded)
+- **DBSCAN**: Detecção de clusters + ruído (análise complementar)
 - **Isolation Forest**: Detecção de anomalias (eventos raros)
-- **Pipeline**: Integração pré-processamento + ML
+- **PELT (Ruptures)**: Change point detection — tire cliffs por stint
+- **MLFlow**: Tracking config-driven (habilitado via `mlflow.enabled` no config.yaml)
 
 ### **FASE 4: Exportação Estruturada (🚧 Próxima Fase)**
 ```
@@ -321,8 +316,8 @@ Eventos (JSON) → DSPY/Agno → Narrativas & Chat
 | Pré-processamento | SciPy (interpolate, signal, stats) | ✅ Implementado | [src/preprocessing/](src/preprocessing/README.md) |
 | Pré-proc ML | Scikit-learn (imputers, encoders, scalers) | ✅ Implementado | [PREPROCESSING.md](PREPROCESSING.md) |
 | Machine Learning | Scikit-learn (KMeans, DBSCAN, IsolationForest) | ✅ Implementado | [src/ml/](src/ml/README.md) |
+| Change Point Detection | Ruptures/PELT (tire cliffs) | ✅ Implementado | [src/ml/](src/ml/README.md) |
 | Tracking ML | MLFlow (métricas, parâmetros, artefatos) | ✅ Implementado | [MLFLOW_SETUP.md](MLFLOW_SETUP.md) |
-| Change Point Detection | Ruptures | 🚧 Próxima Fase | - |
 | Validação | Pydantic | 🚧 Próxima Fase | - |
 | API | FastAPI | 📅 Planejado | - |
 | LLM | DSPY, Agno | 📅 Planejado | - |

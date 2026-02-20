@@ -58,36 +58,12 @@ uv run python cli/pipeline.py 2025 1 --show-sample
   - `results_processed.parquet`
 
 - `data/ml/races/2025/round_01/` - Resultados de Machine Learning
-  - `laps_clustered.parquet` - Voltas com labels de cluster (ritmos identificados)
-  - `laps_anomalies.parquet` - Voltas com detecção de anomalias (eventos raros)
+  - `laps_clustered.parquet` - K-Means: ritmos por piloto (push/base/degraded)
+  - `laps_anomalies.parquet` - Isolation Forest: voltas anômalas
   - `anomalies_summary.parquet` - Sumário de anomalias por piloto
-
-## Comandos Individuais (Opcional)
-
-### Apenas Extração
-
-```bash
-# Extrair TODOS os dados de uma corrida
-uv run python cli/extract.py 2025 1
-
-# Com polling (para corridas recentes)
-uv run python cli/extract.py 2025 1 --polling
-```
-
-**Importante:** A extração SEMPRE inclui telemetria de todos os pilotos.
-
-### Apenas Pré-processamento
-
-```bash
-# Pré-processar tudo (de dados já extraídos)
-uv run python cli/preprocess.py --year 2025 --round 1 --all --save
-
-# Pré-processar apenas laps
-uv run python cli/preprocess.py --year 2025 --round 1 --laps --save
-
-# Pré-processar apenas telemetria
-uv run python cli/preprocess.py --year 2025 --round 1 --telemetry --save
-```
+  - `laps_changepoints.parquet` - PELT: regimes de degradação por stint
+  - `tire_cliffs.parquet` - Tire cliffs detectados por (Driver, Stint)
+  - `tire_cliffs_summary.parquet` - Sumário de cliffs por piloto
 
 ## Dados Extraídos (Brutos)
 
@@ -385,12 +361,12 @@ A extração SEMPRE inclui todos os 5 tipos de dados. Se algum estiver faltando,
 
 ## Próximos Passos
 
-Após extrair e pré-processar os dados, você pode:
+Após rodar o pipeline, os dados em `data/ml/` estão prontos para:
 
 1. **Análise exploratória:** Usar Jupyter notebooks para explorar os dados
-2. **Machine Learning:** Implementar detecção de eventos (Ruptures, Isolation Forest)
-3. **Visualização:** Criar gráficos de telemetria, degradação de pneus, etc.
-4. **Exportação:** Converter para outros formatos (CSV, JSON)
+2. **Visualização:** Criar gráficos de telemetria, degradação de pneus, clusters
+3. **Exportação:** Estruturar eventos com Pydantic e exportar para JSON (próxima fase)
+4. **LLM/API:** Gerar narrativas com DSPY/Agno via FastAPI (fase futura)
 
 ## Documentação Adicional
 
