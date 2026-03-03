@@ -14,11 +14,17 @@ gridstory processa uma corrida de Fórmula 1 e gera automaticamente um relatóri
 
 ```mermaid
 flowchart TD
-    A[FastF1 API] --> B["Fase 1 — Extração\nParquet: voltas, telemetria, race_control, clima, resultados"]
-    B --> C["Fase 2 — Pré-processamento\nCorreção de combustível, normalização, filtros SciPy"]
-    C --> D["Fase 3 — Machine Learning\nK-Means k=3 · Isolation Forest · PELT/Ruptures · DBSCAN"]
-    D --> E["Fase 4 — Eventos Pydantic\ntimeline.json · race_summary.json · driver_profiles.json"]
-    E --> F["Fase 5 — LLM DSPy + Groq\nRELATORIO_CORRIDA.md"]
+    A[FastF1 API]
+    A --> B[Fase 1 — Extração]
+    B --> B1[Parquet: voltas · telemetria · race_control · clima · resultados]
+    B1 --> C[Fase 2 — Pré-processamento]
+    C --> C1[Correção de combustível · normalização · filtros SciPy]
+    C1 --> D[Fase 3 — Machine Learning]
+    D --> D1[K-Means k=3 · Isolation Forest · PELT/Ruptures · DBSCAN]
+    D1 --> E[Fase 4 — Eventos Pydantic]
+    E --> E1[timeline.json · race_summary.json · driver_profiles.json]
+    E1 --> F[Fase 5 — LLM DSPy + Groq]
+    F --> G[RELATORIO_CORRIDA.md]
 ```
 
 ---
