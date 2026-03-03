@@ -117,6 +117,7 @@ ml:
     min_cliff_magnitude: 0.3  # segundos — cliffs com magnitude menor são descartados
                               # magnitude negativa = ficando mais rápido = falso positivo (race start)
     penalty_search_range: [1, 2, 3, 5, 8, 13, 21]  # para calibração via --penalty-search
+    warmup_laps_skip: 3   # ML-02: ignorar primeiros N laps do stint (out-lap + aquecimento de pneu)
     validation:
       enabled: true
       window_laps: 5      # laps antes do cliff para calcular slope de degradação
@@ -126,7 +127,12 @@ ml:
   anomaly:
     contamination: 0.05  # Padrão: 5% (RESOLVIDO: era 0.1 no config antigo, 0.05 no código)
     n_estimators: 100
-    # Perfis de contaminação por tipo de corrida
+    # ML-03: Contamination adaptativo baseado em eventos reais do race_control
+    adaptive_contamination: true   # true = estima contamination de SC/flags; false = usa perfil fixo
+    contamination_min: 0.02        # mínimo mesmo em corridas limpas (variância natural)
+    contamination_max: 0.12        # máximo para não flagrar tudo como anômalo
+    contamination_margin: 0.02     # margem adicional sobre a taxa de eventos
+    # Perfis de contaminação por tipo de corrida (usados quando adaptive=false)
     contamination_profiles:
       clean: 0.03      # Corrida limpa, sem incidentes (3%)
       normal: 0.05     # Corrida padrão (5%)
@@ -142,6 +148,15 @@ ml:
     evaluation:
       silhouette_threshold: 0.25   # realista para dados contínuos de F1 (esperado 0.2–0.4)
       davies_bouldin_threshold: 1.5
+
+  # ML-01: Correção de combustível
+  fuel:
+    correction_enabled: true      # true = aplica correção linear de combustível por stint
+    rate_seconds_per_lap: 0.065   # segundos de melhoria por volta queimada (~0.065 s/lap para F1)
+
+  # ML-06: Janela de undercut/overcut
+  undercut:
+    window_laps: 4                # número de voltas para considerar um undercut (janela após o pit de A)
 
   # DBSCAN
   dbscan:
@@ -160,8 +175,9 @@ api:
   port: 8000
   reload: false
 
-# LLM (futuro)
+# LLM
 llm:
-  model: "gpt-4"
-  temperature: 0.7
-  max_tokens: 2000
+  provider: "groq"                    # LLM-A: groq | openrouter
+  model: "llama-3.3-70b-versatile"    # LLM-A: modelo principal
+  temperature: 0.3
+  max_tokens: 1000

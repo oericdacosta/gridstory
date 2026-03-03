@@ -124,7 +124,7 @@ def print_pipeline_header(year: int, round_num: int):
     print("=" * 80)
 
 
-def print_final_summary(race_dir, processed_dir, ml_dir):
+def print_final_summary(race_dir, processed_dir, ml_dir, timeline_dir=None):
     """
     Imprime resumo final do pipeline.
 
@@ -132,11 +132,19 @@ def print_final_summary(race_dir, processed_dir, ml_dir):
         race_dir: Diretório dos dados brutos
         processed_dir: Diretório dos dados processados
         ml_dir: Diretório dos resultados de ML
+        timeline_dir: Diretório dos JSONs e relatório (Fases 4 e 5)
     """
     print("\n" + "=" * 80)
     print("✅ PIPELINE CONCLUÍDO COM SUCESSO!")
     print("=" * 80)
-    print(f"📂 Dados brutos: {race_dir}")
+    print(f"📂 Dados brutos:      {race_dir}")
     print(f"📂 Dados processados: {processed_dir}")
-    print(f"📂 Resultados ML: {ml_dir}")
+    print(f"📂 Resultados ML:     {ml_dir}")
+    if timeline_dir is not None:
+        from pathlib import Path
+        timeline_dir = Path(timeline_dir)
+        print(f"📂 JSONs + Relatório: {timeline_dir}")
+        relatorio = timeline_dir / "relatorio.json"
+        if relatorio.exists():
+            print(f"   └─ relatorio.json: {relatorio.stat().st_size // 1024}KB")
     print("=" * 80)

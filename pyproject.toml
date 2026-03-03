@@ -5,13 +5,16 @@ description = "F1 race data pipeline — from raw telemetry to structured JSON e
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+    "dspy-ai>=2.5.0",
     "fastf1>=3.8.1",
     "mlflow>=3.10.0rc0",
     "numpy>=2.4.2",
     "pandas>=2.3.3",
     "pyarrow>=23.0.0",
     "pydantic>=2.12.5",
+    "python-dotenv>=1.0.0",
     "pyyaml>=6.0.3",
+    "hdbscan>=0.8.38",
     "ruptures>=1.1.7",
     "scikit-learn>=1.8.0",
     "scipy>=1.17.0",

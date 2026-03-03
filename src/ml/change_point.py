@@ -45,6 +45,7 @@ def detect_tire_changepoints(
     min_cliff_magnitude: float | None = None,
     validation_window: int | None = None,
     slope_threshold: float | None = None,
+    warmup_laps_skip: int | None = None,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """
     Detecta tire cliffs (mudanças de regime de degradação) por driver × stint.
@@ -74,6 +75,8 @@ def detect_tire_changepoints(
                              Cliffs abaixo deste valor são falsos positivos (None = config)
         validation_window: Laps antes do cliff para calcular slope (None = config)
         slope_threshold: Slope mínimo (s/volta) para validar cliff (None = config)
+        warmup_laps_skip: Laps iniciais de cada stint a ignorar no sinal (out-lap + aquecimento).
+                          Evita breakpoints falsos causados por pneu frio (None = usa config)
 
     Returns:
         Tupla (laps_df, changepoints_df):
@@ -109,6 +112,8 @@ def detect_tire_changepoints(
         slope_threshold = config.get_ruptures_validation_slope_threshold()
 
     validation_enabled = config.get_ruptures_validation_enabled()
+    if warmup_laps_skip is None:
+        warmup_laps_skip = config.get_ruptures_warmup_laps_skip()
 
     # Verificar colunas obrigatórias
     required_cols = [driver_column, stint_column, lap_column, signal_column]
@@ -129,13 +134,23 @@ def detect_tire_changepoints(
             stint_df = stint_df.sort_values(lap_column)
             n_laps_in_stint = len(stint_df)
 
+            # ML-02: Filtro de warmup laps — ignorar primeiros N laps do stint
+            # (out-lap + pneu frio causam falsas quedas de sinal no início do stint)
+            stint_start_lap = stint_df[lap_column].min()
+            if warmup_laps_skip > 0:
+                stint_df_for_signal = stint_df[
+                    stint_df[lap_column] >= stint_start_lap + warmup_laps_skip
+                ]
+            else:
+                stint_df_for_signal = stint_df
+
             # Filtrar laps anômalos do sinal
             if has_anomaly_col:
-                clean_mask = ~stint_df[anomaly_col].astype(bool)
-                clean_df = stint_df[clean_mask]
+                clean_mask = ~stint_df_for_signal[anomaly_col].astype(bool)
+                clean_df = stint_df_for_signal[clean_mask]
                 n_anomalies_filtered = int((~clean_mask).sum())
             else:
-                clean_df = stint_df
+                clean_df = stint_df_for_signal
                 n_anomalies_filtered = 0
 
             n_laps_analyzed = len(clean_df)

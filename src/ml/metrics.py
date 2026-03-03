@@ -470,6 +470,104 @@ def calculate_changepoint_metrics(
     }
 
 
+def compute_driver_quality_score(
+    driver: str,
+    silhouette_score_val: float | None,
+    n_laps_analyzed: int,
+    anomaly_rate: float,
+    n_stints: int,
+) -> float:
+    """
+    Score composto 0-1 que representa a confiabilidade dos dados de um piloto.
+
+    Score baixo indica que o piloto tem poucos dados limpos (DNF precoce, muitas anomalias)
+    e o relatório LLM deve confiar menos em narrativas detalhadas desse piloto.
+
+    Args:
+        driver: Código do piloto (apenas para logging)
+        silhouette_score_val: Silhouette score do clustering do piloto (None se não calculado)
+        n_laps_analyzed: Número de voltas analisadas (após filtros estruturais)
+        anomaly_rate: Taxa de anomalias do piloto (0.0 a 1.0)
+        n_stints: Número de stints completados pelo piloto
+
+    Returns:
+        Score entre 0 (dados ruins) e 1 (dados excelentes)
+
+    Composição:
+        - 40% clustering quality (silhouette): clusters bem separados = dados ricos
+        - 30% quantidade de dados: mínimo 30 laps para score completo
+        - 20% taxa de anomalias saudável: >15% anomalias indica dados problemáticos
+        - 10% número de stints: mínimo 2 stints para análise estratégica completa
+    """
+    score = 0.0
+
+    # 40% — qualidade do clustering
+    if silhouette_score_val is not None and not np.isnan(silhouette_score_val):
+        score += min(1.0, max(0.0, float(silhouette_score_val))) * 0.40
+    else:
+        score += 0.10  # Score mínimo se não foi possível calcular
+
+    # 30% — quantidade de dados limpos
+    score += min(1.0, n_laps_analyzed / 30.0) * 0.30
+
+    # 20% — taxa de anomalias dentro do esperado (>15% = dados problemáticos)
+    if anomaly_rate <= 0.15:
+        score += (1.0 - anomaly_rate / 0.15) * 0.20
+    # Acima de 15% = penalidade total nesse componente
+
+    # 10% — número de stints (piloto com 1 stint = menos contexto estratégico)
+    score += min(1.0, n_stints / 2.0) * 0.10
+
+    return round(score, 3)
+
+
+def compute_all_driver_quality_scores(
+    laps_anomalies: pd.DataFrame,
+    per_driver_clustering: dict,
+    tire_cliffs: pd.DataFrame | None = None,
+) -> dict[str, float]:
+    """
+    Calcula o score de qualidade de dados para todos os pilotos.
+
+    Args:
+        laps_anomalies: DataFrame com is_anomaly e Driver
+        per_driver_clustering: Output de calculate_per_driver_clustering_metrics()
+        tire_cliffs: DataFrame de cliffs por (Driver, Stint), opcional
+
+    Returns:
+        Dict {driver_code: quality_score}
+    """
+    scores: dict[str, float] = {}
+
+    if laps_anomalies.empty or "Driver" not in laps_anomalies.columns:
+        return scores
+
+    # Mapear silhouette por piloto
+    silhouette_map: dict[str, float] = {}
+    for entry in per_driver_clustering.get("per_driver", []):
+        silhouette_map[entry["driver"]] = entry.get("silhouette_score", 0.0)
+
+    # Mapear stints por piloto (se disponível)
+    stints_map: dict[str, int] = {}
+    if tire_cliffs is not None and not tire_cliffs.empty and "Driver" in tire_cliffs.columns:
+        stints_map = tire_cliffs.groupby("Driver").size().to_dict()
+
+    for driver, driver_df in laps_anomalies.groupby("Driver"):
+        n_laps = len(driver_df)
+        n_anomalies = int(driver_df["is_anomaly"].sum()) if "is_anomaly" in driver_df.columns else 0
+        anomaly_rate = n_anomalies / n_laps if n_laps > 0 else 0.0
+
+        scores[str(driver)] = compute_driver_quality_score(
+            driver=str(driver),
+            silhouette_score_val=silhouette_map.get(str(driver)),
+            n_laps_analyzed=n_laps,
+            anomaly_rate=anomaly_rate,
+            n_stints=stints_map.get(str(driver), 1),
+        )
+
+    return scores
+
+
 def evaluate_clustering_quality(
     metrics: dict[str, float],
     silhouette_threshold: float | None = None,

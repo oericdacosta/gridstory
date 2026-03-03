@@ -119,6 +119,34 @@ class UndercutEvent(BaseRaceEvent):
     )
 
 
+class OvercutEvent(BaseRaceEvent):
+    """
+    Manobra de overcut detectada por strategy.detect_overcuts() (ML-06).
+
+    Ocorre quando um piloto (A) permanece em pista enquanto o rival (B) à sua
+    frente entra nos boxes. A para mais tarde e ainda mantém ou ganha a posição
+    sobre B graças ao ritmo no stint longo.
+    """
+
+    type: Literal["overcut"] = "overcut"
+    winner: str = Field(
+        ...,
+        min_length=3,
+        max_length=3,
+        description="Piloto que executou o overcut (manteve/ganhou posição).",
+    )
+    loser: str = Field(
+        ...,
+        min_length=3,
+        max_length=3,
+        description="Piloto que sofreu o overcut (perdeu a posição ao parar antes).",
+    )
+    time_saved_seconds: float = Field(
+        ...,
+        description="Vantagem mantida estimada em segundos.",
+    )
+
+
 class SafetyCarEvent(BaseRaceEvent):
     """
     Safety Car implantado durante a corrida.
@@ -137,6 +165,10 @@ class SafetyCarEvent(BaseRaceEvent):
         ...,
         ge=1,
         description="Número de voltas que o Safety Car permaneceu em pista.",
+    )
+    cause: str | None = Field(
+        None,
+        description="Causa do safety car extraída do race_control (ex: 'CAR 14 (ALO) RETIRED').",
     )
 
 
@@ -160,6 +192,28 @@ class PenaltyEvent(BaseRaceEvent):
     )
 
 
+class RetirementEvent(BaseRaceEvent):
+    """
+    Abandono (DNF) de um piloto.
+
+    Adicionado deterministicamente para cada piloto nos DNFs do race_summary
+    que não possui outro evento associado, garantindo que todo abandono seja
+    narrado pela LLM.
+    """
+
+    type: Literal["retirement"] = "retirement"
+    driver: str = Field(
+        ...,
+        min_length=3,
+        max_length=3,
+        description="Sigla do piloto que abandonou.",
+    )
+    cause: str | None = Field(
+        None,
+        description="Causa do abandono extraída do race_control, se disponível.",
+    )
+
+
 # Tipo discriminado: o Pydantic instancia a classe correta baseado em 'type'
 AnyRaceEvent = Annotated[
     Union[
@@ -167,8 +221,10 @@ AnyRaceEvent = Annotated[
         ExternalIncidentEvent,
         TireDropoffEvent,
         UndercutEvent,
+        OvercutEvent,
         SafetyCarEvent,
         PenaltyEvent,
+        RetirementEvent,
     ],
     Discriminator("type"),
 ]

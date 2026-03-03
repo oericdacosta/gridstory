@@ -6,7 +6,8 @@ Pipeline unificado que executa:
 1. Extração completa de dados da corrida (laps, telemetry, race_control, weather, results)
 2. Pré-processamento de TODOS os dados com NumPy, Pandas e SciPy
 3. Machine Learning com Scikit-learn (clustering, anomaly detection) + Ruptures (tire cliffs)
-4. Eventos Estruturados: classificação de causas, undercuts e geração de timeline.json (Pydantic)
+4. Eventos Estruturados: classificação de causas, undercuts e geração dos 3 JSONs (Pydantic)
+5. Relatório Jornalístico: DSPy ChainOfThought via OpenRouter → relatorio.json (Pydantic)
 
 Exemplo de uso:
     # Pipeline completo para uma corrida
@@ -17,6 +18,12 @@ Exemplo de uso:
 
     # Mostrar amostras dos dados processados
     uv run python cli/pipeline.py 2025 1 --show-sample
+
+    # Pular a geração de relatório (Fase 5)
+    uv run python cli/pipeline.py 2025 1 --skip-llm
+
+    # Nota: LLM-A - Usa Groq llama-3.3-70b-versatile (latência ~3-5s vs 38s do OpenRouter)
+    #       LLM-B - Usa dspy.Predict em vez de ChainOfThought (-30% tokens)
 """
 
 import argparse
@@ -33,6 +40,7 @@ from cli.pipeline_steps.extraction import run_extraction_phase
 from cli.pipeline_steps.preprocessing import run_preprocessing_phase
 from cli.pipeline_steps.ml import run_ml_phase
 from cli.pipeline_steps.events import run_events_phase
+from cli.pipeline_steps.llm import run_llm_phase
 
 
 def run_complete_pipeline(
@@ -40,15 +48,17 @@ def run_complete_pipeline(
     round_num: int,
     use_polling: bool = False,
     show_sample: bool = False,
+    skip_llm: bool = False,
 ):
     """
-    Executa pipeline completo: extração + pré-processamento + ML + eventos estruturados.
+    Executa pipeline completo: extração + pré-processamento + ML + eventos + relatório LLM.
 
     Args:
         year: Ano da temporada
         round_num: Número da rodada
         use_polling: Se deve aguardar disponibilidade dos dados
         show_sample: Se deve mostrar amostras dos dados processados
+        skip_llm: Se True, pula a Fase 5 (geração de relatório via DSPy)
     """
     # Cabeçalho
     print_pipeline_header(year, round_num)
@@ -85,7 +95,7 @@ def run_complete_pipeline(
     # ========================================================================
     # FASE 4: EVENTOS ESTRUTURADOS (PYDANTIC)
     # ========================================================================
-    run_events_phase(
+    timeline_dir = run_events_phase(
         ml_dir=ml_dir,
         processed_dir=processed_dir,
         year=year,
@@ -93,9 +103,20 @@ def run_complete_pipeline(
     )
 
     # ========================================================================
+    # FASE 5: RELATÓRIO JORNALÍSTICO (DSPY + GROQ)
+    # ========================================================================
+    if not skip_llm:
+        run_llm_phase(
+            timeline_dir=timeline_dir,
+            year=year,
+            round_num=round_num,
+            processed_dir=processed_dir,
+        )
+
+    # ========================================================================
     # RESUMO FINAL
     # ========================================================================
-    print_final_summary(race_dir, processed_dir, ml_dir)
+    print_final_summary(race_dir, processed_dir, ml_dir, timeline_dir)
 
 
 def main():
@@ -129,6 +150,12 @@ def main():
         help="Mostrar amostras dos dados processados",
     )
 
+    parser.add_argument(
+        "--skip-llm",
+        action="store_true",
+        help="Pular a Fase 5 (geração de relatório via DSPy + OpenRouter)",
+    )
+
     args = parser.parse_args()
 
     try:
@@ -137,6 +164,7 @@ def main():
             round_num=args.round,
             use_polling=args.polling,
             show_sample=args.show_sample,
+            skip_llm=args.skip_llm,
         )
     except Exception as e:
         print(f"\n❌ Erro durante pipeline: {e}")

@@ -61,15 +61,30 @@ def preprocess_race_control(df: pd.DataFrame) -> pd.DataFrame:
     else:
         df['message'] = ''
 
-    # Criar indicadores binários para eventos importantes
-    df['is_safety_car'] = df.apply(
-        lambda row: any(keyword in str(row.get('message', '')).upper() + str(row.get('category', '')).upper()
-                       for keyword in ['SAFETY CAR', 'VIRTUAL SAFETY CAR', 'VSC', 'SC DEPLOYED']),
+    # ML-08: Separar SC completo de VSC — impactos diferentes na pista
+    # VSC: carros desaceleram menos, por menos tempo
+    # SC completo: carros acompanham o safety car, grande impacto no ritmo
+    def _text(row) -> str:
+        return str(row.get('message', '')).upper() + str(row.get('category', '')).upper()
+
+    df['is_virtual_safety_car'] = df.apply(
+        lambda row: any(kw in _text(row) for kw in ['VIRTUAL SAFETY CAR', 'VSC DEPLOYED', 'SAFETY CAR (VSC)']),
         axis=1
     )
 
+    df['is_full_safety_car'] = df.apply(
+        lambda row: (
+            any(kw in _text(row) for kw in ['SAFETY CAR DEPLOYED', 'SC DEPLOYED'])
+            and not df.loc[row.name, 'is_virtual_safety_car']
+        ),
+        axis=1
+    )
+
+    # is_safety_car = union de SC + VSC (retrocompatibilidade com código existente)
+    df['is_safety_car'] = df['is_full_safety_car'] | df['is_virtual_safety_car']
+
     df['is_flag'] = df.apply(
-        lambda row: any(keyword in str(row.get('message', '')).upper() + str(row.get('category', '')).upper()
+        lambda row: any(keyword in _text(row)
                        for keyword in ['YELLOW FLAG', 'RED FLAG', 'GREEN FLAG', 'BLUE FLAG', 'FLAG']),
         axis=1
     )

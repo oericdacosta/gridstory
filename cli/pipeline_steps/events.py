@@ -13,6 +13,7 @@ Output: data/timelines/races/YEAR/round_XX/
 
 import json
 import logging
+import shutil
 from pathlib import Path
 
 import pandas as pd
@@ -21,7 +22,7 @@ from pydantic import ValidationError
 from src.ml.anomaly_classification import classify_anomaly_cause
 from src.ml.driver_profiles_builder import build_driver_profiles
 from src.ml.race_summary_builder import build_race_summary
-from src.ml.strategy import detect_undercuts
+from src.ml.strategy import detect_undercuts, detect_overcuts
 from src.ml.timeline import build_race_timeline
 from .reporting import Reporter
 
@@ -118,14 +119,16 @@ def run_events_phase(
     n_external = int(laps_anomalies["is_anomaly"].sum()) - n_driver_errors
     reporter.info(f"Erros do piloto: {n_driver_errors} | Causas externas: {n_external}")
 
-    # --- 4.3: Detectar undercuts ---
-    reporter.section("4.3", "Detectando manobras de undercut")
+    # --- 4.3: Detectar undercuts e overcuts ---
+    reporter.section("4.3", "Detectando manobras de undercut e overcut (ML-06)")
     undercuts = pd.DataFrame(columns=["driver", "target_driver", "lap", "time_gained_seconds"])
+    overcuts = pd.DataFrame(columns=["driver", "target_driver", "lap", "time_saved_seconds"])
     if laps_df is not None:
         undercuts = detect_undercuts(laps_df)
-        reporter.info(f"{len(undercuts)} undercuts detectados")
+        overcuts = detect_overcuts(laps_df)
+        reporter.info(f"{len(undercuts)} undercuts detectados | {len(overcuts)} overcuts detectados")
     else:
-        reporter.info("⚠️  laps_processed.parquet não encontrado — undercuts não detectados")
+        reporter.info("⚠️  laps_processed.parquet não encontrado — undercuts/overcuts não detectados")
 
     # --- 4.4: Construir timeline.json ---
     reporter.section("4.4", "Construindo RaceTimeline (validação Pydantic)")
@@ -136,6 +139,8 @@ def run_events_phase(
             undercuts=undercuts,
             race_control=race_control,
             laps_df=laps_df,
+            results=results,
+            overcuts=overcuts,
         )
     except ValidationError as exc:
         reporter.info(f"❌ Falha de validação Pydantic:\n{exc}", indent=0)
@@ -197,5 +202,12 @@ def run_events_phase(
             logger.exception("Falha ao gerar driver_profiles.json")
     else:
         reporter.info("⚠️  results ou laps_clustered ausentes — driver_profiles.json não gerado")
+
+    # --- ML-07: Copiar driver_quality_scores.json para timeline_dir ---
+    qs_src = ml_dir / "driver_quality_scores.json"
+    if qs_src.exists():
+        qs_dst = timeline_dir / "driver_quality_scores.json"
+        shutil.copy2(qs_src, qs_dst)
+        reporter.success(f"driver_quality_scores.json copiado: {qs_dst}", indent=0)
 
     return timeline_dir

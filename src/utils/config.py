@@ -232,6 +232,42 @@ class Config:
         Slope positivo = ritmo degradando = cliff real."""
         return self.get("ml.degradation.validation.slope_threshold", 0.05)
 
+    def get_ruptures_warmup_laps_skip(self) -> int:
+        """ML-02: Retorna o número de laps iniciais a ignorar no sinal PELT por stint.
+        Evita breakpoints falsos causados por out-lap e aquecimento de pneu."""
+        return int(self.get("ml.degradation.warmup_laps_skip", 3))
+
+    # Getters para contamination adaptativo (ML-03)
+    def get_adaptive_contamination(self) -> bool:
+        """ML-03: Retorna se o contamination adaptativo está habilitado."""
+        return bool(self.get("ml.anomaly.adaptive_contamination", True))
+
+    def get_contamination_min(self) -> float:
+        """ML-03: Retorna o mínimo de contamination para corridas limpas."""
+        return float(self.get("ml.anomaly.contamination_min", 0.02))
+
+    def get_contamination_max(self) -> float:
+        """ML-03: Retorna o máximo de contamination."""
+        return float(self.get("ml.anomaly.contamination_max", 0.12))
+
+    def get_contamination_margin(self) -> float:
+        """ML-03: Retorna a margem adicional sobre a taxa de eventos."""
+        return float(self.get("ml.anomaly.contamination_margin", 0.02))
+
+    # Getters para correção de combustível (ML-01)
+    def get_fuel_correction_enabled(self) -> bool:
+        """ML-01: Retorna se a correção de combustível está habilitada."""
+        return bool(self.get("ml.fuel.correction_enabled", True))
+
+    def get_fuel_rate_seconds_per_lap(self) -> float:
+        """ML-01: Retorna a taxa de melhoria de LapTime por volta de queima de combustível."""
+        return float(self.get("ml.fuel.rate_seconds_per_lap", 0.065))
+
+    # Getter para janela de undercut/overcut (ML-06)
+    def get_undercut_window_laps(self) -> int:
+        """ML-06: Retorna a janela de voltas para detecção de undercut/overcut."""
+        return int(self.get("ml.undercut.window_laps", 4))
+
     def get_silhouette_threshold(self) -> float:
         """Retorna threshold de Silhouette para avaliação de qualidade de clustering.
         Para dados contínuos de F1, 0.25 é realista (range esperado: 0.2–0.4)."""

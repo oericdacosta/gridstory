@@ -16,10 +16,12 @@ ser consumido por build_race_timeline() → Pydantic → LLM.
 
 import pandas as pd
 
+from src.utils.config import get_config as _get_config
 
-# Janela máxima de voltas entre pit stops para considerar um undercut
-# (undercuts com > UNDERCUT_WINDOW voltas de diferença não são undercuts — são estratégias diferentes)
-UNDERCUT_WINDOW = 4
+
+def _get_undercut_window() -> int:
+    """Retorna a janela de undercut do config (default 4)."""
+    return _get_config().get_undercut_window_laps()
 
 
 def detect_undercuts(
@@ -67,6 +69,8 @@ def detect_undercuts(
     seen_pairs: set[tuple[str, str, int]] = set()
 
     # Para cada pit stop real de cada piloto A, verificar se é um undercut
+    undercut_window = _get_undercut_window()
+
     for _, pit_row in pit_laps.iterrows():
         driver_a = pit_row["Driver"]
         pit_lap_a = pit_row["pit_lap"]
@@ -85,11 +89,11 @@ def detect_undercuts(
             if pair_key in seen_pairs:
                 continue
 
-            # Verificar se B (target) parou entre pit_lap_a + 1 e pit_lap_a + UNDERCUT_WINDOW
+            # Verificar se B (target) parou entre pit_lap_a + 1 e pit_lap_a + undercut_window
             pit_b_rows = pit_laps[
                 (pit_laps["Driver"] == target_driver) &
                 (pit_laps["pit_lap"] > pit_lap_a) &
-                (pit_laps["pit_lap"] <= pit_lap_a + UNDERCUT_WINDOW)
+                (pit_laps["pit_lap"] <= pit_lap_a + undercut_window)
             ]
 
             if pit_b_rows.empty:
@@ -124,6 +128,113 @@ def detect_undercuts(
 
     return pd.DataFrame(undercuts) if undercuts else pd.DataFrame(
         columns=["driver", "target_driver", "lap", "time_gained_seconds"]
+    )
+
+
+def detect_overcuts(
+    laps_df: pd.DataFrame,
+    min_time_saved: float = 0.3,
+) -> pd.DataFrame:
+    """
+    ML-06: Detecta manobras de overcut em uma corrida.
+
+    Um overcut ocorre quando um piloto (A) que está ATRÁS decide permanecer na pista
+    enquanto o rival (B) à sua frente entra nos boxes. A permanece e, ao parar mais
+    tarde, ainda mantém ou ganha a posição sobre B.
+
+    Algoritmo:
+        Para cada par de pilotos (A atrás, B à frente):
+        1. B para nos boxes (pit_lap_b).
+        2. A NÃO para nos mesmos {undercut_window} laps após B parar.
+        3. Quando A finalmente para (pit_lap_a > pit_lap_b), verifica se A ainda
+           está à frente de B após a parada de A.
+        4. Estima o tempo ganho/mantido por A no stint longo.
+
+    Args:
+        laps_df: DataFrame com Driver, LapNumber, Position, LapTime_seconds, Stint
+        min_time_saved: Mínimo de vantagem mantida (s) para confirmar o overcut
+
+    Returns:
+        DataFrame com: driver, target_driver, lap (quando A para), time_saved_seconds
+    """
+    required = {"Driver", "LapNumber", "Position", "LapTime_seconds", "Stint"}
+    if required - set(laps_df.columns):
+        return pd.DataFrame(columns=["driver", "target_driver", "lap", "time_saved_seconds"])
+
+    df = laps_df.copy()
+    pit_laps = _find_pit_laps(df)
+    if pit_laps.empty:
+        return pd.DataFrame(columns=["driver", "target_driver", "lap", "time_saved_seconds"])
+
+    undercut_window = _get_undercut_window()
+    overcuts = []
+    seen_pairs: set[tuple[str, str, int]] = set()
+
+    for _, pit_row in pit_laps.iterrows():
+        driver_b = pit_row["Driver"]
+        pit_lap_b = pit_row["pit_lap"]
+
+        # Pilotos atrás de B antes do seu pit
+        pos_b_before = _get_position(df, driver_b, pit_lap_b - 1)
+        if pos_b_before is None:
+            continue
+
+        # Candidatos a fazer overcut: pilotos ATRÁS de B (posição maior)
+        behind_drivers_lap = df[df["LapNumber"] == pit_lap_b - 1]
+        behind_drivers = behind_drivers_lap[
+            (behind_drivers_lap["Position"] > pos_b_before) &
+            (behind_drivers_lap["Position"] <= pos_b_before + 6) &
+            (behind_drivers_lap["Driver"] != driver_b)
+        ]["Driver"].tolist()
+
+        for driver_a in behind_drivers:
+            pair_key = (driver_a, driver_b, pit_lap_b)
+            if pair_key in seen_pairs:
+                continue
+
+            # Verificar que A NÃO parou na janela imediata após B
+            a_pits_near_b = pit_laps[
+                (pit_laps["Driver"] == driver_a) &
+                (pit_laps["pit_lap"] >= pit_lap_b) &
+                (pit_laps["pit_lap"] <= pit_lap_b + undercut_window)
+            ]
+            if not a_pits_near_b.empty:
+                continue  # A parou junto — não é overcut
+
+            # Verificar que A parou em algum momento posterior
+            a_pits_later = pit_laps[
+                (pit_laps["Driver"] == driver_a) &
+                (pit_laps["pit_lap"] > pit_lap_b + undercut_window)
+            ]
+            if a_pits_later.empty:
+                continue
+
+            pit_lap_a = int(a_pits_later.iloc[0]["pit_lap"])
+
+            # Verificar se após a parada de A, A está à frente ou igual a B
+            pos_a_after = _get_position(df, driver_a, pit_lap_a + 1)
+            pos_b_after = _get_position(df, driver_b, pit_lap_a + 1)
+
+            if pos_a_after is None or pos_b_after is None:
+                continue
+            if pos_a_after >= pos_b_after:
+                continue  # A ainda está atrás — não houve overcut
+
+            # Estimar vantagem mantida
+            time_saved = _estimate_time_gained(df, driver_a, driver_b, pit_lap_b, pit_lap_a)
+            if time_saved < min_time_saved:
+                continue
+
+            seen_pairs.add(pair_key)
+            overcuts.append({
+                "driver": driver_a,
+                "target_driver": driver_b,
+                "lap": pit_lap_a,
+                "time_saved_seconds": round(time_saved, 3),
+            })
+
+    return pd.DataFrame(overcuts) if overcuts else pd.DataFrame(
+        columns=["driver", "target_driver", "lap", "time_saved_seconds"]
     )
 
 

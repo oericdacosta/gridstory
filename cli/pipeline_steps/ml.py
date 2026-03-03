@@ -6,6 +6,7 @@ para clustering (K-Means/DBSCAN), anomaly detection (Isolation Forest),
 change point detection (Ruptures/PELT) e tracking MLFlow (config-driven).
 """
 
+import json
 from pathlib import Path
 
 import pandas as pd
@@ -52,6 +53,13 @@ def run_ml_phase(
     laps_df = pd.read_parquet(laps_processed_file)
     reporter.info(f"{len(laps_df)} voltas carregadas")
 
+    # ML-03: Carregar race_control para contamination adaptativo
+    race_control_df = None
+    race_control_file = processed_dir / "race_control_processed.parquet"
+    if race_control_file.exists():
+        race_control_df = pd.read_parquet(race_control_file)
+        reporter.info("Race control carregado para contamination adaptativo")
+
     # Executar pipeline completo (clustering + anomaly + changepoint + MLflow via config)
     reporter.section("3.1–3.4", "Executando pipeline de ML")
     results = run_race_analysis(
@@ -59,6 +67,7 @@ def run_ml_phase(
         analysis_type='all',
         year=year,
         round_number=round_num,
+        race_control_df=race_control_df,
         # enable_mlflow=None → lê mlflow.enabled do config.yaml automaticamente
     )
 
@@ -96,6 +105,14 @@ def _save_results(results: dict, ml_dir: Path, reporter: Reporter) -> None:
         summary = summarize_anomalies(results['laps_anomalies'], group_by='Driver')
         out = ml_dir / 'anomalies_summary.parquet'
         summary.to_parquet(out, index=False)
+        reporter.success(f"Salvo: {out}")
+
+    # ML-07: Salvar driver_quality_scores como JSON para uso na fase LLM
+    if 'driver_quality_scores' in results and not results['driver_quality_scores'].empty:
+        qs_df = results['driver_quality_scores']
+        qs_dict = dict(zip(qs_df['driver'], qs_df['quality_score']))
+        out = ml_dir / 'driver_quality_scores.json'
+        out.write_text(json.dumps(qs_dict, indent=2), encoding='utf-8')
         reporter.success(f"Salvo: {out}")
 
 

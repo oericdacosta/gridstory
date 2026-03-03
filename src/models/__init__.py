@@ -8,8 +8,10 @@ from .race_events import (
     ExternalIncidentEvent,
     TireDropoffEvent,
     UndercutEvent,
+    OvercutEvent,
     SafetyCarEvent,
     PenaltyEvent,
+    RetirementEvent,
     AnyRaceEvent,
     RaceTimeline,
 )
@@ -23,6 +25,7 @@ from .driver_profile import (
     CompoundUsage,
     DriverProfile,
 )
+from .relatorio import RelatorioSecoes
 
 __all__ = [
     # Race Events (timeline.json)
@@ -31,8 +34,10 @@ __all__ = [
     "ExternalIncidentEvent",
     "TireDropoffEvent",
     "UndercutEvent",
+    "OvercutEvent",
     "SafetyCarEvent",
     "PenaltyEvent",
+    "RetirementEvent",
     "AnyRaceEvent",
     "RaceTimeline",
     # Race Summary (race_summary.json)
@@ -43,4 +48,6 @@ __all__ = [
     # Driver Profiles (driver_profiles.json)
     "CompoundUsage",
     "DriverProfile",
+    # LLM Report (relatorio.json)
+    "RelatorioSecoes",
 ]

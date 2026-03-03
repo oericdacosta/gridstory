@@ -19,7 +19,7 @@ from ..preprocessing.feature_engineering import (
     encode_categorical_variables,
     scale_features,
 )
-from .clustering import cluster_laps_kmeans, cluster_laps_dbscan
+from .clustering import cluster_laps_kmeans, cluster_laps_dbscan, cluster_laps_hdbscan
 from .anomaly_detection import detect_anomalies_isolation_forest
 from .change_point import detect_tire_changepoints, summarize_cliffs
 from .metrics import (
@@ -27,6 +27,7 @@ from .metrics import (
     calculate_changepoint_metrics,
     calculate_cluster_statistics,
     calculate_per_driver_clustering_metrics,
+    compute_all_driver_quality_scores,
 )
 from .tracking import setup_mlflow, track_pipeline_run
 
@@ -132,18 +133,35 @@ def detect_stints(
     return df
 
 
-def engineer_lap_features(df: pd.DataFrame) -> pd.DataFrame:
+def engineer_lap_features(
+    df: pd.DataFrame,
+    fuel_correction_enabled: bool | None = None,
+    fuel_rate_s_per_lap: float | None = None,
+) -> pd.DataFrame:
     """
     Adiciona features engenheiradas para melhorar qualidade do clustering.
 
     Features adicionadas:
     - Stint: Número do stint por piloto (detectado por resets no TyreLife)
-    - LapTime_delta: Desvio do tempo de volta em relação à mediana do stint do piloto
-      (captura variação de ritmo relativa, eliminando diferença absoluta entre pilotos)
+    - LapTime_fuel_corrected: LapTime corrigido pelo efeito do combustível (ML-01)
+    - LapTime_delta: Desvio relativo à mediana do stint (sobre tempo corrigido)
     - TyreAge_normalized: Vida do pneu normalizada 0→1 por stint
-      (captura fase de degradação do pneu independente da estratégia)
     - Compound_ordinal: Compound como ordinal (SOFT=1, MEDIUM=2, HARD=3)
+    - relative_pace: Delta em relação ao top-3 da volta (detecta SC/bandeiras) (ML-04)
+
+    Args:
+        df: DataFrame de voltas pré-processado
+        fuel_correction_enabled: Se True, aplica correção de combustível. None = lê config
+        fuel_rate_s_per_lap: Taxa de melhoria do LapTime por lap de queima (s/lap). None = lê config
     """
+    from src.utils.config import get_config as _get_config
+    cfg = _get_config()
+
+    if fuel_correction_enabled is None:
+        fuel_correction_enabled = cfg.get_fuel_correction_enabled()
+    if fuel_rate_s_per_lap is None:
+        fuel_rate_s_per_lap = cfg.get_fuel_rate_seconds_per_lap()
+
     df = df.copy()
 
     # Compound ordinal: captura dureza do composto como feature contínua
@@ -154,18 +172,46 @@ def engineer_lap_features(df: pd.DataFrame) -> pd.DataFrame:
     # Detectar stints
     df = detect_stints(df)
 
+    # ML-04: relative_pace — delta em relação ao top-3 da mesma volta
+    # Detecta quando toda a pista está lenta (SC/VSC) vs piloto individual lento
+    if 'LapTime_seconds' in df.columns and 'LapNumber' in df.columns:
+        lap_top3_ref = df.groupby('LapNumber')['LapTime_seconds'].transform(
+            lambda x: x.nsmallest(3).median() if len(x) >= 3 else x.median()
+        )
+        df['relative_pace'] = df['LapTime_seconds'] - lap_top3_ref
+
     # Features por piloto × stint
     if 'Driver' in df.columns and 'LapTime_seconds' in df.columns:
         df['LapTime_delta'] = 0.0
         df['TyreAge_normalized'] = 0.0
+        if fuel_correction_enabled:
+            df['LapTime_fuel_corrected'] = df['LapTime_seconds'].copy()
 
         for driver, driver_df in df.groupby('Driver'):
             for stint, stint_df in driver_df.groupby('Stint'):
                 idx = stint_df.index
+                stint_laps = stint_df.sort_values('LapNumber')
 
-                # LapTime_delta: desvio relativo à mediana do stint
-                median_lt = df.loc[idx, 'LapTime_seconds'].median()
-                df.loc[idx, 'LapTime_delta'] = df.loc[idx, 'LapTime_seconds'] - median_lt
+                # ML-01: Correção de combustível por posição no stint
+                # Os primeiros laps do stint têm mais combustível (mais lentos por isso)
+                # Corremos ao contrário: removemos a tendência de melhora natural
+                lap_position = np.arange(len(stint_laps), dtype=float)  # 0, 1, 2, ...
+                fuel_correction = lap_position * fuel_rate_s_per_lap    # crescente ao longo do stint
+
+                if fuel_correction_enabled:
+                    # Tempo corrigido = tempo real - efeito do combustível
+                    # (equaliza os tempos de início e fim do stint)
+                    corrected = (
+                        stint_laps['LapTime_seconds'].values - fuel_correction
+                    )
+                    df.loc[stint_laps.index, 'LapTime_fuel_corrected'] = corrected
+                    base_time = corrected
+                else:
+                    base_time = df.loc[idx, 'LapTime_seconds'].values
+
+                # LapTime_delta sobre tempo corrigido
+                median_lt = np.median(base_time[~np.isnan(base_time)])
+                df.loc[idx, 'LapTime_delta'] = base_time - median_lt
 
                 # TyreAge_normalized: 0→1 dentro do stint
                 if 'TyreLife' in df.columns:
@@ -309,6 +355,48 @@ def filter_structural_laps(
     return df[clean_mask].copy(), df[~clean_mask].copy()
 
 
+def _estimate_contamination_from_race_control(
+    race_control_df: pd.DataFrame | None,
+    total_laps: int,
+    min_cont: float = 0.02,
+    max_cont: float = 0.12,
+    margin: float = 0.02,
+) -> float:
+    """
+    ML-03: Estima o valor de contamination baseado em eventos reais do race_control.
+
+    Em vez de fixar 5% para toda corrida, considera quantas voltas foram afetadas
+    por SC/VSC/bandeiras — que naturalmente produzem laps lentas (não erros reais).
+
+    Args:
+        race_control_df: DataFrame do race_control processado (com is_safety_car, is_flag)
+        total_laps: Total de voltas da corrida (para calcular taxa)
+        min_cont: Mínimo de contamination (mesmo em corridas limpas há variância natural)
+        max_cont: Máximo de contamination (teto para não flagrar tudo como anômalo)
+        margin: Margem adicional sobre a taxa de eventos
+
+    Returns:
+        Valor de contamination entre min_cont e max_cont
+    """
+    if race_control_df is None or race_control_df.empty or total_laps <= 0:
+        return 0.05  # Padrão se sem informação
+
+    sc_laps = 0
+    if 'is_safety_car' in race_control_df.columns and 'Lap' in race_control_df.columns:
+        sc_events = race_control_df[race_control_df['is_safety_car'].fillna(False)]
+        sc_laps = sc_events['Lap'].dropna().nunique()
+
+    flag_laps = 0
+    if 'is_flag' in race_control_df.columns and 'Lap' in race_control_df.columns:
+        flag_events = race_control_df[race_control_df['is_flag'].fillna(False)]
+        flag_laps = flag_events['Lap'].dropna().nunique()
+
+    event_rate = (sc_laps + flag_laps) / total_laps
+    estimated = event_rate + margin
+
+    return float(min(max_cont, max(min_cont, estimated)))
+
+
 def run_race_analysis(
     laps_df: pd.DataFrame,
     analysis_type: str = "all",
@@ -319,6 +407,7 @@ def run_race_analysis(
     year: int | None = None,
     round_number: int | None = None,
     contamination_profile: str = 'normal',
+    race_control_df: pd.DataFrame | None = None,
 ) -> dict[str, pd.DataFrame]:
     """
     Executa análise completa de ML em dados de voltas de uma corrida.
@@ -460,6 +549,20 @@ def run_race_analysis(
     clustering_metrics_dict = None
     anomaly_metrics_dict = None
 
+    # ML-03: Contamination adaptativo baseado em eventos reais do race_control
+    if race_control_df is not None and _get_config().get_adaptive_contamination():
+        total_race_laps = int(laps_scaled['LapNumber'].max()) if 'LapNumber' in laps_scaled.columns else 0
+        cfg_c = _get_config()
+        _adaptive_contamination = _estimate_contamination_from_race_control(
+            race_control_df=race_control_df,
+            total_laps=total_race_laps,
+            min_cont=cfg_c.get_contamination_min(),
+            max_cont=cfg_c.get_contamination_max(),
+            margin=cfg_c.get_contamination_margin(),
+        )
+    else:
+        _adaptive_contamination = None  # Vai usar o contamination do perfil
+
     # Etapa 2: Clustering (se solicitado)
     if analysis_type in ['clustering', 'all']:
         # Features para clustering — preferência por features engenheiradas + degradation_slope
@@ -540,12 +643,21 @@ def run_race_analysis(
         )
         results['cluster_statistics'] = cluster_stats
 
-        # 2.2 DBSCAN como análise complementar
-        laps_dbscan = cluster_laps_dbscan(
-            laps_for_clustering,
-            feature_columns=cluster_feature_cols,
-            group_by='Driver' if has_driver_col else None,
-        )
+        # 2.2 ML-05: HDBSCAN como análise complementar (substituiu DBSCAN — noise_rate < 15%)
+        # HDBSCAN não requer eps, resolve o problema de noise_rate=38.73% do DBSCAN com eps=0.5
+        try:
+            laps_dbscan = cluster_laps_hdbscan(
+                laps_for_clustering,
+                feature_columns=cluster_feature_cols,
+                group_by='Driver' if has_driver_col else None,
+            )
+        except ImportError:
+            # Fallback para DBSCAN se hdbscan não estiver instalado
+            laps_dbscan = cluster_laps_dbscan(
+                laps_for_clustering,
+                feature_columns=cluster_feature_cols,
+                group_by='Driver' if has_driver_col else None,
+            )
         results['laps_dbscan'] = laps_dbscan
 
         per_driver_dbscan = calculate_per_driver_clustering_metrics(
@@ -580,12 +692,16 @@ def run_race_analysis(
                 'LapTime_delta',
                 'Sector1Time_seconds', 'Sector2Time_seconds', 'Sector3Time_seconds',
                 'degradation_slope', 'Position',
+                'relative_pace',   # ML-04: ritmo relativo ao top-3 da volta (detecta SC)
             ]
             if col in laps_scaled.columns
         ]
-        # contamination lido do config via perfil (clean/normal/chaotic) — não hardcoded
+        # ML-03: Usar contamination adaptativo se disponível, senão perfil do config
         from src.utils.config import get_config as _get_config
-        _contamination = _get_config().get_contamination(contamination_profile)
+        if _adaptive_contamination is not None:
+            _contamination = _adaptive_contamination
+        else:
+            _contamination = _get_config().get_contamination(contamination_profile)
         laps_anomalies = detect_anomalies_isolation_forest(
             laps_scaled,
             feature_columns=anomaly_feature_cols,
@@ -626,6 +742,20 @@ def run_race_analysis(
             results['tire_cliffs'] = changepoints_df
             results['tire_cliffs_summary'] = cliffs_summary
             results['changepoint_metrics'] = pd.DataFrame([changepoint_metrics_dict])
+
+    # ML-07: Calcular scores de qualidade de dados por piloto
+    driver_quality_scores: dict[str, float] = {}
+    if 'laps_anomalies' in results and 'per_driver_clustering_metrics' in results:
+        tire_cliffs_for_quality = results.get('tire_cliffs', None)
+        driver_quality_scores = compute_all_driver_quality_scores(
+            laps_anomalies=results['laps_anomalies'],
+            per_driver_clustering=results['per_driver_clustering_metrics'],
+            tire_cliffs=tire_cliffs_for_quality,
+        )
+        results['driver_quality_scores'] = pd.DataFrame([
+            {'driver': drv, 'quality_score': score}
+            for drv, score in sorted(driver_quality_scores.items())
+        ])
 
     # Criar sumário executivo
     summary = {
@@ -674,6 +804,19 @@ def run_race_analysis(
             mlflow_artifacts['tire_cliffs.csv'] = results['tire_cliffs']
         if 'tire_cliffs_summary' in results:
             mlflow_artifacts['tire_cliffs_summary.csv'] = results['tire_cliffs_summary']
+        if 'driver_quality_scores' in results:
+            mlflow_artifacts['driver_quality_scores.csv'] = results['driver_quality_scores']
+
+        # Adicionar quality scores ao dict de params para MLflow
+        quality_params = {}
+        for drv, qscore in driver_quality_scores.items():
+            quality_params[f'driver_{drv}_quality_score'] = qscore
+
+        # Estatísticas agregadas de quality score
+        if driver_quality_scores:
+            q_values = list(driver_quality_scores.values())
+            quality_params['quality_score_mean'] = round(float(np.mean(q_values)), 3)
+            quality_params['quality_score_min'] = round(float(np.min(q_values)), 3)
 
         mlflow_run_id = track_pipeline_run(
             run_name=run_name,
@@ -688,12 +831,16 @@ def run_race_analysis(
                 'scaler_type': 'robust',
                 'contamination_profile': contamination_profile,
                 'contamination': _contamination if 'laps_anomalies' in results else None,
+                'adaptive_contamination': _adaptive_contamination is not None,
+                'fuel_correction_enabled': _get_config().get_fuel_correction_enabled(),
+                'warmup_laps_skip': _get_config().get_ruptures_warmup_laps_skip(),
                 'kmeans_k': 3,
                 'structural_filter_threshold': 1.5,
                 'cluster_semantics': 'size_first_then_delta',
                 'n_zero_laps_removed': n_zero_laps,
                 'cluster_features': ','.join(cluster_feature_cols) if analysis_type in ['clustering', 'all'] else '',
                 'anomaly_features': ','.join(anomaly_feature_cols) if analysis_type in ['anomaly', 'all'] else '',
+                **quality_params,
             },
             tags={
                 'driver': driver if driver else 'all',

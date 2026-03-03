@@ -1,8 +1,11 @@
 """
 Clusterização não supervisionada para análise de ritmo de corrida.
 
-Implementa K-Means e DBSCAN para agrupar voltas semelhantes e identificar
+Implementa K-Means, DBSCAN e HDBSCAN para agrupar voltas semelhantes e identificar
 o "ritmo de corrida" real versus voltas de economia ou tráfego.
+
+ML-05: HDBSCAN substituiu DBSCAN como análise complementar — não requer eps,
+mais robusto em densidades variáveis. Target: noise_rate < 15%.
 """
 
 import numpy as np
@@ -316,5 +319,92 @@ def cluster_laps_dbscan(
         dbscan = DBSCAN(eps=eps_value, min_samples=min_samples)
         df['cluster_label'] = dbscan.fit_predict(X)
         df['is_noise'] = df['cluster_label'] == -1
+
+    return df
+
+
+def cluster_laps_hdbscan(
+    df: pd.DataFrame,
+    feature_columns: list[str],
+    min_cluster_size: int = 5,
+    min_samples: int = 3,
+    group_by: str | None = None,
+) -> pd.DataFrame:
+    """
+    ML-05: Agrupa voltas usando HDBSCAN para reduzir noise_rate abaixo de 15%.
+
+    HDBSCAN (Hierarchical DBSCAN) não requer eps — detecta automaticamente a
+    densidade local de cada ponto, sendo mais robusto que DBSCAN em dados com
+    densidades variáveis (o que ocorre naturalmente por stint/composto em F1).
+
+    O DBSCAN com eps=0.5 produzia noise_rate=38.73% no GP Austrália 2025 porque
+    eps é muito restritivo no espaço pós-RobustScaler. HDBSCAN resolve isso ao
+    calcular densidade hierarquicamente.
+
+    Args:
+        df: DataFrame com dados de voltas (já pré-processado e escalonado)
+        feature_columns: Colunas para usar no clustering
+        min_cluster_size: Tamanho mínimo de cluster (padrão 5 — ao menos meia volta de stint)
+        min_samples: Mínimo de vizinhos para considerar ponto de núcleo (padrão 3)
+        group_by: Coluna para agrupar antes do clustering (ex: 'Driver')
+
+    Returns:
+        DataFrame com colunas adicionais:
+        - cluster_label: Label do cluster (-1 = ruído/outlier, 0+ = cluster)
+        - is_noise: Flag binária indicando se é ruído (True) ou cluster (False)
+
+    Example:
+        >>> laps_hdbscan = cluster_laps_hdbscan(
+        ...     laps_scaled,
+        ...     feature_columns=['LapTime_delta', 'TyreAge_normalized'],
+        ...     group_by='Driver',
+        ... )
+        >>> noise_rate = laps_hdbscan['is_noise'].mean()
+        >>> print(f"Noise rate: {noise_rate:.1%}")  # Target: < 15%
+    """
+    try:
+        from hdbscan import HDBSCAN as _HDBSCAN
+    except ImportError as e:
+        raise ImportError(
+            "Módulo 'hdbscan' não encontrado. Instale com: uv add hdbscan"
+        ) from e
+
+    df = df.copy()
+
+    # Verificar se features existem
+    missing_cols = [col for col in feature_columns if col not in df.columns]
+    if missing_cols:
+        raise ValueError(f"Colunas não encontradas: {missing_cols}")
+
+    def _run_hdbscan(X: np.ndarray, min_cluster_size_: int, min_samples_: int) -> np.ndarray:
+        """Executa HDBSCAN e retorna labels."""
+        # min_cluster_size não pode ser maior que o número de amostras
+        mcs = min(min_cluster_size_, max(2, len(X) // 4))
+        ms = min(min_samples_, mcs)
+        clusterer = _HDBSCAN(
+            min_cluster_size=mcs,
+            min_samples=ms,
+            cluster_selection_method="eom",  # Excess of Mass — mais estável
+        )
+        return clusterer.fit_predict(X)
+
+    if group_by:
+        df['cluster_label'] = -1
+        df['is_noise'] = True
+
+        for _, group_df in df.groupby(group_by):
+            if len(group_df) < min_samples:
+                continue
+
+            X = group_df[feature_columns].values
+            labels = _run_hdbscan(X, min_cluster_size, min_samples)
+
+            df.loc[group_df.index, 'cluster_label'] = labels
+            df.loc[group_df.index, 'is_noise'] = labels == -1
+    else:
+        X = df[feature_columns].values
+        labels = _run_hdbscan(X, min_cluster_size, min_samples)
+        df['cluster_label'] = labels
+        df['is_noise'] = labels == -1
 
     return df
