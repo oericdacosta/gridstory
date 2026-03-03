@@ -34,4 +34,4 @@ mlruns/
 tmp_mlflow_artifacts/
 
 # Documentação local (não versionada)
-CHANGELOG.md
+RELATORIO_CORRIDA.md

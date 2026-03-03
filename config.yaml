@@ -177,7 +177,7 @@ api:
 
 # LLM
 llm:
-  provider: "groq"                    # LLM-A: groq | openrouter
+  provider: "groq"
   model: "llama-3.3-70b-versatile"    # LLM-A: modelo principal
   temperature: 0.3
   max_tokens: 1000

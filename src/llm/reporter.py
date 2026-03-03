@@ -48,21 +48,6 @@ def setup_lm() -> dspy.LM:
             max_tokens=max_tokens,
             temperature=temperature,
         )
-    elif provider == "openrouter":
-        api_key = os.getenv("OPENROUTER_API_KEY")
-        if not api_key:
-            raise ValueError("OPENROUTER_API_KEY not set.")
-        lm = dspy.LM(
-            model=f"openai/{model_name}",
-            api_base="https://openrouter.ai/api/v1",
-            api_key=api_key,
-            extra_headers={
-                "HTTP-Referer": "https://github.com/pitwall-ai",
-                "X-Title": "PitWall AI",
-            },
-            max_tokens=max_tokens,
-            temperature=temperature,
-        )
     else:
         raise ValueError(f"Provider não suportado: {provider}")
 
