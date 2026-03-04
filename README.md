@@ -51,6 +51,16 @@ cp .env.example .env
 
 ## Uso
 
+### Interface web (recomendado)
+
+```bash
+uv run streamlit run app.py
+```
+
+Selecione o ano e a corrida na barra lateral. Se o relatório já existir em disco, é exibido diretamente. Caso contrário, o pipeline roda com feedback visual por fase e o resultado aparece ao final.
+
+### CLI
+
 ```bash
 # Pipeline completo — extração, ML e relatório
 uv run python cli/pipeline.py 2025 1
@@ -132,6 +142,7 @@ gridstory/
 │   ├── ml/races/
 │   └── timelines/races/
 │
+├── app.py                             # interface web Streamlit
 ├── config.yaml                        # todos os hiperparâmetros
 ├── .env.example                       # variáveis de ambiente necessárias
 └── pyproject.toml
@@ -149,6 +160,7 @@ gridstory/
 | Contratos de dados | Pydantic v2 |
 | LLM | DSPy, Groq (llama-3.3-70b-versatile) |
 | Observabilidade | MLflow |
+| Interface web | Streamlit |
 
 ---
 

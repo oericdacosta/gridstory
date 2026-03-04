@@ -28,7 +28,8 @@ load_dotenv()
 # ---------------------------------------------------------------------------
 
 def setup_lm() -> dspy.LM:
-    """Configure DSPy with Groq (llama-3.3-70b-versatile). LLM-A."""
+    """Build and return a DSPy LM for Groq. Does NOT call dspy.configure() to
+    avoid the thread-ownership restriction; callers must use dspy.context(lm=lm)."""
     from src.utils.config import config as _cfg
 
     provider = _cfg.get("llm.provider", "groq")
@@ -51,7 +52,6 @@ def setup_lm() -> dspy.LM:
     else:
         raise ValueError(f"Provider não suportado: {provider}")
 
-    dspy.configure(lm=lm)
     return lm
 
 
@@ -72,7 +72,15 @@ REGRAS (invioláveis):
 - Safety cars: cite volta e duração. Abandonos: cite volta e causa se disponível.
 - ANTI-REPETIÇÃO: cada piloto e cada evento deve aparecer UMA ÚNICA VEZ no artigo inteiro \
 (exceto vencedor no lead e conclusão). Nunca repita o mesmo abandono ou manobra em duas \
-seções diferentes."""
+seções diferentes.
+- GRAMÁTICA: concordância nominal obrigatória — adjetivos e artigos concordam em gênero e \
+número com o substantivo que modificam. Exemplos corretos: "corrida emocionante" (não \
+"corrida emocionantes"), "vitória dominante" (não "vitória dominantes"), "piloto veloz" \
+(não "piloto velozes"). Substantivos femininos como "corrida", "vitória", "estratégia" \
+exigem adjetivos no feminino singular.
+- IDIOMA: escreva EXCLUSIVAMENTE em português do Brasil. Nunca use palavras em inglês \
+(ex: "already", "race", "lap", "final lap") nem em italiano ou qualquer outra língua. \
+Exceção permitida: nomes próprios de pilotos e equipes exatamente como no JSON."""
 
     contexto: str = dspy.InputField(
         desc=(
@@ -307,7 +315,9 @@ def generate_report(
 
     try:
         mlflow.dspy.autolog()
-    except AttributeError:
+    except (AttributeError, RuntimeError):
+        # AttributeError: mlflow version sem suporte a dspy.autolog
+        # RuntimeError: dspy.settings thread-ownership restriction (ex: Streamlit)
         pass
 
     year = race_summary.get("year", "unknown")
@@ -348,15 +358,18 @@ def generate_report(
         mlflow.log_metric("input_chars", input_chars)
 
         # ── DSPy call with timing ────────────────────────────────────────────
+        # Use dspy.context() instead of dspy.configure() so the LM is set as a
+        # thread-local override — safe to call from any thread (e.g. Streamlit).
         retry_count = 0
         t0 = time.perf_counter()
         generator = GeradorRelatorio()
 
-        try:
-            pred = generator(contexto=context_str)
-        except Exception:
-            retry_count += 1
-            pred = generator(contexto=context_str)
+        with dspy.context(lm=lm):
+            try:
+                pred = generator(contexto=context_str)
+            except Exception:
+                retry_count += 1
+                pred = generator(contexto=context_str)
 
         latency_s = time.perf_counter() - t0
 
